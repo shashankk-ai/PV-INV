@@ -1,0 +1,63 @@
+import dotenv from 'dotenv';
+dotenv.config();
+import express from 'express';
+import cors from 'cors';
+import path from 'path';
+import { requestIdMiddleware } from './middleware/requestId';
+import { errorHandler } from './middleware/errorHandler';
+import authRouter from './routes/auth';
+import healthRouter from './routes/health';
+import { connectDB } from './services/prisma';
+import { connectRedis } from './services/redis';
+import { logger } from './utils/logger';
+import { ApiResponse } from '@litmus/shared';
+
+(globalThis as Record<string, unknown>).__litmus_start = Date.now();
+
+const app = express();
+const PORT = parseInt(process.env.PORT || '3001', 10);
+
+app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', credentials: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(requestIdMiddleware);
+
+// Serve uploaded photos in dev
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+
+// Routes
+app.use('/api/health', healthRouter);
+app.use('/api/auth', authRouter);
+
+// Serve client in production
+if (process.env.NODE_ENV === 'production') {
+  const clientDist = path.join(__dirname, '..', '..', 'client', 'dist');
+  app.use(express.static(clientDist));
+  app.get('*', (_req, res) => res.sendFile(path.join(clientDist, 'index.html')));
+}
+
+// 404
+app.use((_req, res) => {
+  const body: ApiResponse = {
+    data: null,
+    error: { code: 'NOT_FOUND', message: 'Endpoint not found' },
+    meta: { requestId: res.locals.requestId ?? '', timestamp: new Date().toISOString() },
+  };
+  res.status(404).json(body);
+});
+
+app.use(errorHandler);
+
+async function start() {
+  try {
+    await connectDB();
+    await connectRedis();
+    app.listen(PORT, () => logger.info(`LITMUS server running on http://localhost:${PORT}`));
+  } catch (err) {
+    logger.error(err, 'Failed to start server');
+    process.exit(1);
+  }
+}
+
+start();
+
+export { app };

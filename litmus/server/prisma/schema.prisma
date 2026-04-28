@@ -1,0 +1,149 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  password     String
+  role         String   @default("ops")
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  pv_entries     PvEntry[]
+  pv_sessions    PvSession[]
+  refresh_tokens RefreshToken[]
+  unlisted_items UnlistedItem[]
+
+  @@map("users")
+}
+
+model Warehouse {
+  id            String   @id @default(uuid())
+  name          String
+  location_code String   @unique
+  created_at    DateTime @default(now())
+
+  pv_sessions          PvSession[]
+  system_inventory     SystemInventoryCache[]
+
+  @@map("warehouses")
+}
+
+model PvSession {
+  id           String    @id @default(uuid())
+  warehouse_id String
+  user_id      String
+  started_at   DateTime  @default(now())
+  ended_at     DateTime?
+
+  warehouse Warehouse @relation(fields: [warehouse_id], references: [id])
+  user      User      @relation(fields: [user_id], references: [id])
+  entries   PvEntry[]
+
+  @@index([warehouse_id])
+  @@index([user_id])
+  @@map("pv_sessions")
+}
+
+model PvEntry {
+  id                   String    @id @default(uuid())
+  session_id           String
+  rack_number          String
+  item_name            String
+  item_key             String
+  batch_number         String
+  units                Int
+  packing_size         Int
+  uom                  String
+  packing_type         String
+  total_quantity       Int
+  mfg_date             DateTime
+  expiry_date          DateTime
+  is_potential_duplicate Boolean  @default(false)
+  idempotency_key      String?   @unique
+  created_by           String
+  deleted_at           DateTime?
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @updatedAt
+
+  session PvSession @relation(fields: [session_id], references: [id])
+  user    User      @relation(fields: [created_by], references: [id])
+  photos  PvPhoto[]
+
+  @@index([session_id])
+  @@index([item_key])
+  @@index([created_by])
+  @@map("pv_entries")
+}
+
+model PvPhoto {
+  id         String    @id @default(uuid())
+  entry_id   String
+  url        String
+  thumb_url  String
+  s3_key     String?
+  deleted_at DateTime?
+  created_at DateTime  @default(now())
+
+  entry PvEntry @relation(fields: [entry_id], references: [id])
+
+  @@index([entry_id])
+  @@map("pv_photos")
+}
+
+model UnlistedItem {
+  id           String   @id @default(uuid())
+  session_id   String
+  item_name    String
+  description  String?
+  quantity     Int
+  uom          String
+  packing_type String
+  notes        String?
+  created_by   String
+  created_at   DateTime @default(now())
+
+  user User @relation(fields: [created_by], references: [id])
+
+  @@index([session_id])
+  @@index([created_by])
+  @@map("unlisted_items")
+}
+
+model SystemInventoryCache {
+  id           String   @id @default(uuid())
+  item_key     String
+  item_name    String
+  warehouse_id String
+  quantity     Int
+  uom          String
+  uom_options  String[]
+  synced_at    DateTime @default(now())
+
+  warehouse Warehouse @relation(fields: [warehouse_id], references: [id])
+
+  @@unique([item_key, warehouse_id])
+  @@index([item_key])
+  @@index([warehouse_id])
+  @@map("system_inventory_cache")
+}
+
+model RefreshToken {
+  id         String   @id @default(uuid())
+  user_id    String
+  token      String   @unique
+  expires_at DateTime
+  revoked    Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
+  @@map("refresh_tokens")
+}
