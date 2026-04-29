@@ -19,6 +19,7 @@ model User {
   pv_sessions    PvSession[]
   refresh_tokens RefreshToken[]
   unlisted_items UnlistedItem[]
+  data_uploads   DataUpload[]
 
   @@map("users")
 }
@@ -132,6 +133,22 @@ model SystemInventoryCache {
   @@index([item_key])
   @@index([warehouse_id])
   @@map("system_inventory_cache")
+}
+
+model DataUpload {
+  id               String   @id @default(uuid())
+  filename         String
+  original_filename String
+  source           String   @default("file")  // "file" | "zoho"
+  row_count        Int
+  column_map       Json     // detected + confirmed column mapping
+  uploaded_by      String
+  uploaded_at      DateTime @default(now())
+
+  uploader User @relation(fields: [uploaded_by], references: [id])
+
+  @@index([uploaded_by])
+  @@map("data_uploads")
 }
 
 model RefreshToken {

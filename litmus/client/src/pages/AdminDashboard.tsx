@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../lib/axios';
 import toast from 'react-hot-toast';
+import DataUploadPage from './DataUploadPage';
 
 interface Stats {
   sessions_today: number;
@@ -37,7 +38,7 @@ interface AdminUser {
   scans_today: number;
 }
 
-type Tab = 'overview' | 'users';
+type Tab = 'overview' | 'data' | 'users';
 
 export default function AdminDashboard() {
   const { user, logout } = useAuth();
@@ -99,14 +100,18 @@ export default function AdminDashboard() {
 
       {/* Tab Bar */}
       <div className="bg-white border-b border-gray-200 flex px-4 sticky top-[60px] z-10">
-        {(['overview', 'users'] as Tab[]).map((t) => (
+        {([
+            { key: 'overview', label: 'Overview' },
+            { key: 'data',     label: 'Data' },
+            { key: 'users',    label: 'Team' },
+          ] as { key: Tab; label: string }[]).map(({ key, label }) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors capitalize
-              ${tab === t ? 'border-[#4B3B8C] text-[#4B3B8C]' : 'border-transparent text-gray-500'}`}
+            key={key}
+            onClick={() => setTab(key)}
+            className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors
+              ${tab === key ? 'border-[#4B3B8C] text-[#4B3B8C]' : 'border-transparent text-gray-500'}`}
           >
-            {t === 'users' ? 'Team' : 'Overview'}
+            {label}
           </button>
         ))}
       </div>
@@ -166,6 +171,8 @@ export default function AdminDashboard() {
             </section>
           </>
         )}
+
+        {tab === 'data' && <DataUploadPage />}
 
         {tab === 'users' && (
           <section>

@@ -79,7 +79,7 @@ export class ZohoAnalyticsClient {
     if (!token) throw new Error('Zoho OAuth: no access_token in response');
 
     // Cache for 55 min (tokens last 60 min)
-    await redis.setEx(TOKEN_CACHE_KEY, 55 * 60, token);
+    await redis.setex(TOKEN_CACHE_KEY, 55 * 60, token);
     return token;
   }
 

@@ -177,7 +177,7 @@ router.patch('/users/:id', requireAuth, requireAdmin, validate(updateUserSchema)
 router.delete('/users/:id', requireAuth, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    if ((req as Request & { user?: { id: string } }).user?.id === id) {
+    if ((res.locals.user as { id: string })?.id === id) {
       throw AppError.badRequest('Cannot delete your own account');
     }
     await prisma.user.delete({ where: { id } });

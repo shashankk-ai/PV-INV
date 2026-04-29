@@ -15,6 +15,7 @@ import photosRouter from './routes/photos';
 import ocrRouter from './routes/ocr';
 import adminRouter from './routes/admin';
 import reconciliationRouter from './routes/reconciliation';
+import dataUploadRouter from './routes/dataUpload';
 import { connectDB } from './services/prisma';
 import { connectRedis } from './services/redis';
 import { dataSyncService } from './services/DataSyncService';
@@ -42,6 +43,7 @@ app.use('/api/unlisted-items', unlistedRouter);
 app.use('/api/photos', photosRouter);
 app.use('/api/ocr', ocrRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/admin/data-uploads', dataUploadRouter);
 app.use('/api/reconciliation', reconciliationRouter);
 
 // Serve client in production
