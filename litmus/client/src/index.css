@@ -53,10 +53,48 @@
   to { transform: translateY(0); opacity: 1; }
 }
 
+@keyframes slide-up {
+  from { transform: translateY(16px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .animate-pulse-teal {
   animation: pulse-teal 2s ease-in-out infinite;
 }
 
 .animate-slide-down {
   animation: slide-down 0.3s ease-out;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.2s ease-out both;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.15s ease-out both;
+}
+
+/* Staggered list entrance */
+li:nth-child(1) { animation-delay: 0ms; }
+li:nth-child(2) { animation-delay: 30ms; }
+li:nth-child(3) { animation-delay: 60ms; }
+li:nth-child(4) { animation-delay: 90ms; }
+li:nth-child(5) { animation-delay: 120ms; }
+li:nth-child(n+6) { animation-delay: 150ms; }
+
+/* iOS safe area support */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Print styles for Truth Report */
+@media print {
+  .print\:hidden { display: none !important; }
+  .print\:block { display: block !important; }
+  body { background: white !important; }
 }

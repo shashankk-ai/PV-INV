@@ -85,7 +85,7 @@ export default function SiteSelectPage() {
         ) : (
           <ul className="flex flex-col gap-3">
             {filtered.map((w) => (
-              <li key={w.id}>
+              <li key={w.id} className="animate-slide-up">
                 <button
                   onClick={() => selectSite(w)}
                   className="w-full card p-4 text-left flex items-center gap-0 border-l-4 border-teal

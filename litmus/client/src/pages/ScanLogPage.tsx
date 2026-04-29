@@ -162,7 +162,7 @@ export default function ScanLogPage() {
               </li>
             ))}
             {entries.map((e) => (
-              <li key={e.id}>
+              <li key={e.id} className="animate-slide-up">
                 <div
                   className={`card border-l-4 border-teal overflow-hidden
                     ${e.is_potential_duplicate ? 'border-amber-400' : ''}`}

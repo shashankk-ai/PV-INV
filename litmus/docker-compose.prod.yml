@@ -1,0 +1,86 @@
+version: '3.9'
+
+services:
+  litmus-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-litmus}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      POSTGRES_DB: ${DB_NAME:-litmus_db}
+    volumes:
+      - litmus_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER:-litmus}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  litmus-cache:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - litmus_redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  litmus-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://${DB_USER:-litmus}:${DB_PASSWORD}@litmus-db:5432/${DB_NAME:-litmus_db}?connection_limit=20
+      REDIS_URL: redis://litmus-cache:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET is required}
+      JWT_ACCESS_EXPIRY: ${JWT_ACCESS_EXPIRY:-15m}
+      JWT_REFRESH_EXPIRY: ${JWT_REFRESH_EXPIRY:-7d}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+      ZOHO_API_KEY: ${ZOHO_API_KEY:-}
+      ZOHO_VIEW_ID: ${ZOHO_VIEW_ID:-}
+      ZOHO_ORG_ID: ${ZOHO_ORG_ID:-}
+      SYNC_INTERVAL_MINUTES: ${SYNC_INTERVAL_MINUTES:-30}
+      OCR_ENABLED: ${OCR_ENABLED:-false}
+      LOGIN_RATE_LIMIT_MAX: ${LOGIN_RATE_LIMIT_MAX:-5}
+      LOGIN_RATE_LIMIT_WINDOW_MS: ${LOGIN_RATE_LIMIT_WINDOW_MS:-60000}
+    volumes:
+      - litmus_uploads:/app/uploads
+    depends_on:
+      litmus-db:
+        condition: service_healthy
+      litmus-cache:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3001/api/health | grep -q ok']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  litmus-client:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - '${PORT:-80}:80'
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - litmus_client_dist:/usr/share/nginx/html:ro
+    depends_on:
+      litmus-server:
+        condition: service_healthy
+
+volumes:
+  litmus_pg_data:
+  litmus_redis_data:
+  litmus_uploads:
+  litmus_client_dist:
