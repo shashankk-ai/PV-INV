@@ -167,4 +167,53 @@ router.get(
   }
 );
 
+// GET /api/reconciliation/:warehouseId/items/:itemKey/scans?date=YYYY-MM-DD
+router.get(
+  '/:warehouseId/items/:itemKey/scans',
+  requireAuth,
+  requireAdmin,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { warehouseId, itemKey } = req.params;
+      const dateRange = buildDateRange(req.query.date as string | undefined);
+
+      const sessions = await prisma.pvSession.findMany({
+        where: { warehouse_id: warehouseId, started_at: { gte: dateRange.gte } },
+        select: { id: true },
+      });
+      const sessionIds = sessions.map((s) => s.id);
+
+      const entries = sessionIds.length
+        ? await prisma.pvEntry.findMany({
+            where: { session_id: { in: sessionIds }, item_key: itemKey, deleted_at: null },
+            orderBy: { created_at: 'asc' },
+            include: { user: { select: { username: true } } },
+          })
+        : [];
+
+      ok(res, {
+        item_key: itemKey,
+        item_name: entries[0]?.item_name ?? itemKey,
+        total_pv_count: entries.reduce((s, e) => s + (e.total_quantity ?? 0), 0),
+        scans: entries.map((e) => ({
+          id: e.id,
+          rack_number: e.rack_number,
+          batch_number: e.batch_number,
+          units: e.units,
+          packing_size: e.packing_size,
+          total_quantity: e.total_quantity,
+          uom: e.uom,
+          packing_type: e.packing_type,
+          mfg_date: e.mfg_date?.toISOString().slice(0, 10) ?? null,
+          expiry_date: e.expiry_date?.toISOString().slice(0, 10) ?? null,
+          scanned_by: e.user.username,
+          scanned_at: e.created_at,
+        })),
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 export default router;
