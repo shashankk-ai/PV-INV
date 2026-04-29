@@ -11,9 +11,11 @@ import BottomNav from '../components/BottomNav';
 import ItemCombobox from '../components/ui/ItemCombobox';
 import Stepper from '../components/ui/Stepper';
 import PackingTypeSelector from '../components/ui/PackingTypeSelector';
+import PhotoStrip, { PhotoItem } from '../components/PhotoStrip';
+import OcrSuggestion from '../components/OcrSuggestion';
 import api from '../lib/axios';
 
-const PACKING_TYPES = ['drums','bags','bottles','cans','cartons','pallets','other'] as const;
+const PACKING_TYPES = ['drums', 'bags', 'bottles', 'cans', 'cartons', 'pallets', 'other'] as const;
 
 const schema = z
   .object({
@@ -46,6 +48,8 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
   const { logout } = useAuth();
   const navigate = useNavigate();
   const [uomOptions, setUomOptions] = useState<string[]>([]);
+  const [photos, setPhotos] = useState<PhotoItem[]>([]);
+  const [ocrText, setOcrText] = useState<string | null>(null);
 
   const {
     register,
@@ -66,16 +70,12 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
   const packingSize = watch('packing_size') ?? 1;
   const totalQty = units * packingSize;
 
-  // Redirect if no site selected
-  useEffect(() => {
-    if (!site) navigate('/sites');
-  }, [site, navigate]);
+  useEffect(() => { if (!site) navigate('/sites'); }, [site, navigate]);
 
-  // Ensure session exists
   useEffect(() => {
     if (site && !session) {
       api.post('/sessions', { warehouse_id: site.id })
-        .then((r) => setSession(r.data.data))
+        .then((r) => setSession(r.data.data as Parameters<typeof setSession>[0]))
         .catch(() => {});
     }
   }, [site, session, setSession]);
@@ -86,27 +86,73 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
     if (chem.uom_options.length > 0) setValue('uom', chem.uom_options[0]);
   };
 
-  const onSubmit = async (data: FormData) => {
-    if (!session) {
-      toast.error('No active session. Please select a site again.');
-      return;
+  const runOcr = async (blob: Blob) => {
+    try {
+      const form = new FormData();
+      form.append('image', blob, 'capture.jpg');
+      const res = await api.post<{ data: { detected_text: string | null; confidence: number; enabled: boolean } }>(
+        '/ocr/detect', form, { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+      const { detected_text, confidence, enabled } = res.data.data;
+      if (enabled && detected_text && confidence > 0.5) setOcrText(detected_text);
+    } catch {
+      // silent
     }
+  };
+
+  const handlePhotoAdd = (photo: PhotoItem) => {
+    setPhotos((prev) => [...prev, photo]);
+    // Attempt OCR on new photo
+    runOcr(photo.blob);
+  };
+
+  const handlePhotoRemove = (idx: number) => {
+    setPhotos((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const uploadPhotos = async (entryId: string, sessionId: string) => {
+    for (const photo of photos) {
+      if (photo.uploaded) continue;
+      const form = new FormData();
+      form.append('photo', photo.blob, 'photo.jpg');
+      form.append('entry_id', entryId);
+      form.append('session_id', sessionId);
+      try {
+        await api.post('/photos/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+        photo.uploaded = true;
+      } catch {
+        // Non-blocking — entry is saved even if photo upload fails
+      }
+    }
+  };
+
+  const onSubmit = async (data: FormData) => {
+    if (!session) { toast.error('No active session. Please select a site again.'); return; }
     const idempotencyKey = editEntry?.id ? undefined : crypto.randomUUID();
     try {
       if (editEntry?.id) {
         await api.put(`/sessions/${session.id}/entries/${editEntry.id}`, data);
+        if (photos.length > 0) await uploadPhotos(editEntry.id, session.id);
         toast.success('Scan updated ✓');
         onSaved?.();
       } else {
-        await api.post(`/sessions/${session.id}/entries`, { ...data, idempotency_key: idempotencyKey });
+        const res = await api.post<{ data: { id: string } }>(
+          `/sessions/${session.id}/entries`,
+          { ...data, idempotency_key: idempotencyKey }
+        );
+        const entryId = res.data.data.id;
+        if (photos.length > 0) await uploadPhotos(entryId, session.id);
         toast.success('Scan logged ✓');
         setScanCount((n) => n + 1);
         reset({ units: 1, packing_size: 1, packing_type: undefined });
         setUomOptions([]);
+        setPhotos([]);
+        setOcrText(null);
       }
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: { message?: string } } } })
-        ?.response?.data?.error?.message ?? 'Failed to save. Try again.';
+      const msg =
+        (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ??
+        'Failed to save. Try again.';
       toast.error(msg);
     }
   };
@@ -147,7 +193,7 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
           {errors.rack_number && <p className="mt-1 text-sm text-red-700">{errors.rack_number.message}</p>}
         </div>
 
-        {/* Item Name — combobox */}
+        {/* Item Name */}
         <div>
           <label className="block text-sm font-medium text-navy mb-1.5">Item Name</label>
           <Controller
@@ -157,18 +203,25 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
               <ItemCombobox
                 value={field.value ?? ''}
                 onChange={field.onChange}
-                onSelect={(chem) => {
-                  field.onChange(chem.item_name);
-                  handleItemSelect(chem);
-                }}
+                onSelect={(chem) => { field.onChange(chem.item_name); handleItemSelect(chem); }}
                 error={errors.item_name?.message ?? errors.item_key?.message}
                 placeholder="Search chemical name..."
               />
             )}
           />
+          {/* OCR Suggestion */}
+          {ocrText && (
+            <div className="mt-2">
+              <OcrSuggestion
+                detectedText={ocrText}
+                onAccept={(text) => { setValue('item_name', text, { shouldValidate: true }); setOcrText(null); }}
+                onDismiss={() => setOcrText(null)}
+              />
+            </div>
+          )}
         </div>
 
-        {/* Item Key (read-only) */}
+        {/* Item Key */}
         <div>
           <label className="block text-sm font-medium text-navy mb-1.5">Item Key</label>
           <input
@@ -192,23 +245,13 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
           {errors.batch_number && <p className="mt-1 text-sm text-red-700">{errors.batch_number.message}</p>}
         </div>
 
-        {/* Units + Packing Size row */}
+        {/* Units + Packing Size */}
         <div className="grid grid-cols-2 gap-4">
           <Controller name="units" control={control} render={({ field }) => (
-            <Stepper
-              label="Units"
-              value={field.value ?? 1}
-              onChange={field.onChange}
-              error={errors.units?.message}
-            />
+            <Stepper label="Units" value={field.value ?? 1} onChange={field.onChange} error={errors.units?.message} />
           )} />
           <Controller name="packing_size" control={control} render={({ field }) => (
-            <Stepper
-              label="Pack Size"
-              value={field.value ?? 1}
-              onChange={field.onChange}
-              error={errors.packing_size?.message}
-            />
+            <Stepper label="Pack Size" value={field.value ?? 1} onChange={field.onChange} error={errors.packing_size?.message} />
           )} />
         </div>
 
@@ -216,10 +259,7 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
         <div>
           <label className="block text-sm font-medium text-navy mb-1.5">UOM</label>
           {uomOptions.length > 0 ? (
-            <select
-              {...register('uom')}
-              className={`input-field ${errors.uom ? 'border-red-400' : ''}`}
-            >
+            <select {...register('uom')} className={`input-field ${errors.uom ? 'border-red-400' : ''}`}>
               {uomOptions.map((u) => <option key={u} value={u}>{u}</option>)}
             </select>
           ) : (
@@ -237,15 +277,11 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
         <div>
           <label className="block text-sm font-medium text-navy mb-2">Packing Type</label>
           <Controller name="packing_type" control={control} render={({ field }) => (
-            <PackingTypeSelector
-              value={field.value ?? ''}
-              onChange={field.onChange}
-              error={errors.packing_type?.message}
-            />
+            <PackingTypeSelector value={field.value ?? ''} onChange={field.onChange} error={errors.packing_type?.message} />
           )} />
         </div>
 
-        {/* Total Quantity display */}
+        {/* Total Quantity */}
         <div className="bg-teal-50 border border-teal rounded-xl px-4 py-3 flex items-center justify-between">
           <span className="text-sm text-teal font-medium">Total Quantity</span>
           <span className="text-2xl font-bold text-teal">
@@ -258,37 +294,21 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-navy mb-1.5">Mfg Date</label>
-            <input
-              {...register('mfg_date')}
-              type="date"
-              className={`input-field ${errors.mfg_date ? 'border-red-400' : ''}`}
-            />
+            <input {...register('mfg_date')} type="date"
+              className={`input-field ${errors.mfg_date ? 'border-red-400' : ''}`} />
             {errors.mfg_date && <p className="mt-1 text-sm text-red-700">{errors.mfg_date.message}</p>}
           </div>
           <div>
             <label className="block text-sm font-medium text-navy mb-1.5">Expiry Date</label>
-            <input
-              {...register('expiry_date')}
-              type="date"
-              className={`input-field ${errors.expiry_date ? 'border-red-400' : ''}`}
-            />
+            <input {...register('expiry_date')} type="date"
+              className={`input-field ${errors.expiry_date ? 'border-red-400' : ''}`} />
             {errors.expiry_date && <p className="mt-1 text-sm text-red-700">{errors.expiry_date.message}</p>}
           </div>
         </div>
 
-        {/* Camera placeholder — Phase 4 */}
-        <div className="flex justify-center">
-          <button
-            type="button"
-            className="w-16 h-16 rounded-full bg-teal flex items-center justify-center shadow-md
-                       active:scale-95 transition-transform"
-            title="Add photo (Phase 4)"
-          >
-            <CameraIcon className="w-7 h-7 text-white" />
-          </button>
-        </div>
+        {/* Photo Strip */}
+        <PhotoStrip photos={photos} onAdd={handlePhotoAdd} onRemove={handlePhotoRemove} />
 
-        {/* Spacer for fixed bar */}
         <div className="h-4" />
       </form>
 
@@ -303,31 +323,21 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
       </button>
 
       {/* Fixed bottom submit */}
-      <div className="fixed bottom-16 left-0 right-0 px-4 pb-2 bg-gradient-to-t from-gray-50 z-10">
+      <div className="fixed bottom-16 left-0 right-0 px-4 pb-2 bg-gradient-to-t from-gray-50 to-transparent z-10">
         <button
           type="submit"
-          form="rack-scan-form"
           disabled={isSubmitting}
           onClick={handleSubmit(onSubmit)}
           className="btn-primary h-[52px]"
         >
           {isSubmitting ? (
-            <span className="flex items-center gap-2"><Spinner />Saving...</span>
+            <span className="flex items-center gap-2"><Spinner /> Saving...</span>
           ) : editEntry ? 'Update Scan' : 'Log Scan'}
         </button>
       </div>
 
       <BottomNav />
     </div>
-  );
-}
-
-function CameraIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-      <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
-      <circle cx="12" cy="13" r="4" />
-    </svg>
   );
 }
 
