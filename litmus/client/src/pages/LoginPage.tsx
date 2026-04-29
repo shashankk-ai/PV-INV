@@ -27,8 +27,8 @@ export default function LoginPage() {
   const onSubmit = async (data: FormData) => {
     setServerError('');
     try {
-      await login(data.username, data.password);
-      navigate('/sites');
+      const u = await login(data.username, data.password);
+      navigate(u.role === 'admin' ? '/admin' : '/sites');
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ||
