@@ -13,6 +13,8 @@ import entriesRouter from './routes/entries';
 import unlistedRouter from './routes/unlisted';
 import photosRouter from './routes/photos';
 import ocrRouter from './routes/ocr';
+import adminRouter from './routes/admin';
+import reconciliationRouter from './routes/reconciliation';
 import { connectDB } from './services/prisma';
 import { connectRedis } from './services/redis';
 import { dataSyncService } from './services/DataSyncService';
@@ -39,6 +41,8 @@ app.use('/api/sessions/:sessionId/entries', entriesRouter);
 app.use('/api/unlisted-items', unlistedRouter);
 app.use('/api/photos', photosRouter);
 app.use('/api/ocr', ocrRouter);
+app.use('/api/admin', adminRouter);
+app.use('/api/reconciliation', reconciliationRouter);
 
 // Serve client in production
 if (process.env.NODE_ENV === 'production') {

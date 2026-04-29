@@ -12,7 +12,8 @@ import SiteSelectPage from './pages/SiteSelectPage';
 import RackScanPage from './pages/RackScanPage';
 import ScanLogPage from './pages/ScanLogPage';
 import UnknownCompoundPage from './pages/UnknownCompoundPage';
-import AdminPlaceholder from './pages/AdminPlaceholder';
+import AdminDashboard from './pages/AdminDashboard';
+import TruthReportPage from './pages/TruthReportPage';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30000, retry: 1 } },
@@ -49,7 +50,11 @@ export default function App() {
                 />
                 <Route
                   path="/admin"
-                  element={<ProtectedRoute adminOnly><AdminPlaceholder /></ProtectedRoute>}
+                  element={<ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>}
+                />
+                <Route
+                  path="/admin/truth/:warehouseId"
+                  element={<ProtectedRoute adminOnly><TruthReportPage /></ProtectedRoute>}
                 />
                 <Route path="*" element={<Navigate to="/login" replace />} />
               </Routes>
