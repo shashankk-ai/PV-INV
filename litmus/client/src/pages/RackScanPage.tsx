@@ -238,7 +238,18 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
           <p className="font-semibold text-sm leading-tight text-white opacity-70">Rack Scan</p>
           <p className="font-bold text-base leading-tight">{site.name}</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          {/* Unlisted Item shortcut — prominent in header */}
+          <button
+            type="button"
+            onClick={() => navigate('/unknown')}
+            className="flex items-center gap-1.5 bg-amber-400 hover:bg-amber-300 text-white
+                       text-xs font-bold px-3 py-1.5 rounded-full shadow-md shadow-amber-500/30
+                       active:scale-95 transition-all duration-150"
+          >
+            <span className="text-sm leading-none">?</span>
+            <span>Unlisted Item</span>
+          </button>
           {scanCount > 0 && (
             <div className="w-8 h-8 rounded-full bg-teal-500 border-2 border-white flex items-center justify-center text-xs font-bold text-white">
               {scanCount > 99 ? '99+' : scanCount}
@@ -384,16 +395,6 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
 
         <div className="h-4" />
       </form>
-
-      {/* Unknown Compound FAB */}
-      <button
-        onClick={() => navigate('/unknown')}
-        className="fixed right-4 bottom-24 z-20 flex items-center gap-2 bg-gold text-white
-                   px-4 py-3 rounded-full shadow-lg active:scale-95 transition-transform font-semibold text-sm"
-      >
-        <span className="text-lg font-bold leading-none">?</span>
-        <span>Unknown</span>
-      </button>
 
       {/* Fixed bottom submit */}
       <div className="fixed bottom-16 left-0 right-0 px-4 pb-2 bg-gradient-to-t from-gray-50 to-transparent z-10">

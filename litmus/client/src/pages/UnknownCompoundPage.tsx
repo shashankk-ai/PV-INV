@@ -42,7 +42,7 @@ export default function UnknownCompoundPage() {
     if (!session) { toast.error('No active session'); return; }
     try {
       await api.post('/unlisted-items', { ...data, session_id: session.id });
-      toast.success('Unknown compound recorded ✓');
+      toast.success('Unlisted item recorded ✓');
       navigate('/scan');
     } catch {
       toast.error('Failed to record. Try again.');
@@ -53,24 +53,27 @@ export default function UnknownCompoundPage() {
 
   return (
     <div className="min-h-screen bg-white flex flex-col pb-32">
-      {/* Gold header */}
-      <header className="bg-[#C8A028] text-white px-4 py-4 flex items-center gap-3 sticky top-0 z-20">
+      {/* Amber header */}
+      <header className="bg-gradient-to-r from-amber-500 to-amber-400 text-white px-4 py-4 flex items-center gap-3 sticky top-0 z-20 shadow-md shadow-amber-500/30">
         <button
           onClick={() => navigate('/scan')}
-          className="p-1 rounded-lg active:bg-yellow-600"
+          className="p-1 rounded-lg active:bg-amber-600"
         >
           <BackIcon className="w-6 h-6" />
         </button>
-        <div className="flex items-center gap-2">
-          <WarnFlaskIcon className="w-6 h-6" />
-          <span className="font-bold text-lg">Unknown Compound</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-medium text-white/70 leading-tight">Not in system inventory</p>
+          <div className="flex items-center gap-2">
+            <WarnFlaskIcon className="w-5 h-5" />
+            <span className="font-bold text-lg">Unlisted Item</span>
+          </div>
         </div>
       </header>
 
       {/* Subtitle card */}
-      <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-3">
-        <p className="text-sm text-yellow-800">
-          Item not found in system — record it here.
+      <div className="bg-amber-50 border-b border-amber-200 px-4 py-3">
+        <p className="text-sm text-amber-800">
+          This item is <strong>not found in the system</strong> — it will be recorded separately for review.
         </p>
       </div>
 
@@ -169,7 +172,7 @@ export default function UnknownCompoundPage() {
           disabled={isSubmitting}
           className="btn-gold"
         >
-          {isSubmitting ? 'Recording...' : 'Record Unknown Compound'}
+          {isSubmitting ? 'Recording…' : 'Record Unlisted Item'}
         </button>
       </div>
     </div>

@@ -91,7 +91,7 @@ export default function ItemCombobox({ value, onChange, onSelect, error, placeho
       )}
       {open && results.length === 0 && !loading && value.trim().length > 0 && (
         <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg px-4 py-3 text-sm text-gray-400">
-          No matches — use "Unknown" for unlisted items
+          No matches — tap <strong className="text-amber-600">Unlisted Item</strong> in the header to record it separately
         </div>
       )}
       {error && <p className="mt-1 text-sm text-red-700">{error}</p>}
