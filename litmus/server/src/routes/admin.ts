@@ -1,7 +1,11 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import bcrypt from 'bcryptjs';
+import { z } from 'zod';
 import { requireAuth, requireAdmin } from '../middleware/auth';
+import { validate } from '../middleware/validate';
 import { prisma } from '../services/prisma';
-import { ok } from '../utils/respond';
+import { ok, created } from '../utils/respond';
+import { AppError } from '../utils/AppError';
 
 const router = Router();
 
@@ -113,6 +117,71 @@ router.get('/users', requireAuth, requireAdmin, async (_req: Request, res: Respo
     }));
 
     ok(res, result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+const createUserSchema = z.object({
+  username: z.string().min(3, 'Min 3 characters').max(32).regex(/^[a-z0-9_]+$/, 'Lowercase letters, numbers and _ only'),
+  password: z.string().min(8, 'Min 8 characters'),
+  role: z.enum(['ops', 'admin']),
+});
+
+const updateUserSchema = z.object({
+  password: z.string().min(8, 'Min 8 characters').optional(),
+  role: z.enum(['ops', 'admin']).optional(),
+});
+
+// POST /api/admin/users — create a new user
+router.post('/users', requireAuth, requireAdmin, validate(createUserSchema), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { username, password, role } = req.body as z.infer<typeof createUserSchema>;
+    const existing = await prisma.user.findUnique({ where: { username } });
+    if (existing) throw AppError.conflict('Username already taken');
+
+    const hashed = await bcrypt.hash(password, 12);
+    const user = await prisma.user.create({
+      data: { username, password: hashed, role },
+      select: { id: true, username: true, role: true, created_at: true },
+    });
+    created(res, user);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/admin/users/:id — change password or role
+router.patch('/users/:id', requireAuth, requireAdmin, validate(updateUserSchema), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const { password, role } = req.body as z.infer<typeof updateUserSchema>;
+
+    const data: Record<string, unknown> = {};
+    if (password) data.password = await bcrypt.hash(password, 12);
+    if (role)     data.role = role;
+    if (!Object.keys(data).length) throw AppError.badRequest('Nothing to update');
+
+    const user = await prisma.user.update({
+      where: { id },
+      data,
+      select: { id: true, username: true, role: true, created_at: true },
+    });
+    ok(res, user);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/admin/users/:id — remove a user (cannot self-delete)
+router.delete('/users/:id', requireAuth, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    if ((req as Request & { user?: { id: string } }).user?.id === id) {
+      throw AppError.badRequest('Cannot delete your own account');
+    }
+    await prisma.user.delete({ where: { id } });
+    ok(res, { deleted: true });
   } catch (err) {
     next(err);
   }

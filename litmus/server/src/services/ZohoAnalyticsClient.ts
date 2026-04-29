@@ -1,5 +1,7 @@
+import axios from 'axios';
 import { ZohoChemical, ZohoWarehouse, ZohoInventoryRecord } from '@litmus/shared';
 import { logger } from '../utils/logger';
+import { redis } from './redis';
 import chemicals from '../mocks/chemicals.json';
 
 const MOCK_WAREHOUSES: ZohoWarehouse[] = [
@@ -9,7 +11,6 @@ const MOCK_WAREHOUSES: ZohoWarehouse[] = [
 ];
 
 function randomQty(seed: number): number {
-  // Deterministic-ish quantity for consistent mock data
   return 50 + ((seed * 137 + 31) % 4950);
 }
 
@@ -38,20 +39,55 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
   throw new Error('unreachable');
 }
 
-export class ZohoAnalyticsClient {
-  private readonly apiKey: string | undefined;
-  private readonly viewId: string | undefined;
-  private readonly orgId: string | undefined;
-  private readonly timeout = 10_000;
+const ACCOUNTS_URL = process.env.ZOHO_ACCOUNTS_URL || 'https://accounts.zoho.in';
+const API_BASE     = process.env.ZOHO_API_BASE     || 'https://analyticsapi.zoho.in/restapi/v2';
+const TOKEN_CACHE_KEY = 'zoho:access_token';
 
-  constructor() {
-    this.apiKey = process.env.ZOHO_API_KEY || undefined;
-    this.viewId = process.env.ZOHO_VIEW_ID || undefined;
-    this.orgId = process.env.ZOHO_ORG_ID || undefined;
-  }
+export class ZohoAnalyticsClient {
+  private readonly clientId     = process.env.ZOHO_CLIENT_ID;
+  private readonly clientSecret = process.env.ZOHO_CLIENT_SECRET;
+  private readonly refreshToken = process.env.ZOHO_REFRESH_TOKEN;
+  private readonly orgId        = process.env.ZOHO_ORG_ID;
+
+  // Per-view IDs — fall back to shared ZOHO_VIEW_ID for the items view
+  private readonly itemsViewId     = process.env.ZOHO_ITEMS_VIEW_ID     || process.env.ZOHO_VIEW_ID;
+  private readonly warehousesViewId= process.env.ZOHO_WAREHOUSES_VIEW_ID;
+  private readonly inventoryViewId = process.env.ZOHO_INVENTORY_VIEW_ID;
 
   get useMock(): boolean {
-    return !this.apiKey;
+    return !this.clientId || !this.clientSecret || !this.refreshToken;
+  }
+
+  /** Get (or refresh) an OAuth access token, cached in Redis for 55 minutes. */
+  private async getAccessToken(): Promise<string> {
+    const cached = await redis.get(TOKEN_CACHE_KEY);
+    if (cached) return cached;
+
+    logger.info('ZohoClient: refreshing OAuth access token');
+    const res = await axios.post(
+      `${ACCOUNTS_URL}/oauth/v2/token`,
+      new URLSearchParams({
+        grant_type:    'refresh_token',
+        client_id:     this.clientId!,
+        client_secret: this.clientSecret!,
+        refresh_token: this.refreshToken!,
+      }),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 10_000 }
+    );
+
+    const token: string = res.data.access_token;
+    if (!token) throw new Error('Zoho OAuth: no access_token in response');
+
+    // Cache for 55 min (tokens last 60 min)
+    await redis.setEx(TOKEN_CACHE_KEY, 55 * 60, token);
+    return token;
+  }
+
+  private authHeaders(token: string) {
+    return {
+      Authorization: `Zoho-oauthtoken ${token}`,
+      'ZANALYTICS-ORGID': this.orgId!,
+    };
   }
 
   async fetchItems(): Promise<ZohoChemical[]> {
@@ -60,50 +96,48 @@ export class ZohoAnalyticsClient {
       return chemicals as ZohoChemical[];
     }
     return withRetry(async () => {
-      const { default: axios } = await import('axios');
+      const token = await this.getAccessToken();
       const res = await axios.get(
-        `https://analyticsapi.zoho.com/api/v2/${this.orgId}/views/${this.viewId}/rows`,
-        {
-          headers: { 'ZANALYTICS-ORGID': this.orgId!, Authorization: `Zoho-oauthtoken ${this.apiKey}` },
-          timeout: this.timeout,
-        }
+        `${API_BASE}/workspaces/${this.orgId}/views/${this.itemsViewId}/rows`,
+        { headers: this.authHeaders(token), timeout: 10_000 }
       );
-      return res.data.data.rows as ZohoChemical[];
+      return (res.data?.data?.rows ?? res.data?.rows ?? []) as ZohoChemical[];
     });
   }
 
   async fetchWarehouses(): Promise<ZohoWarehouse[]> {
-    if (this.useMock) {
+    if (this.useMock) return MOCK_WAREHOUSES;
+    if (!this.warehousesViewId) {
+      logger.warn('ZohoClient: ZOHO_WAREHOUSES_VIEW_ID not set, using mock warehouses');
       return MOCK_WAREHOUSES;
     }
     return withRetry(async () => {
-      const { default: axios } = await import('axios');
+      const token = await this.getAccessToken();
       const res = await axios.get(
-        `https://analyticsapi.zoho.com/api/v2/${this.orgId}/views/warehouses/rows`,
-        {
-          headers: { 'ZANALYTICS-ORGID': this.orgId!, Authorization: `Zoho-oauthtoken ${this.apiKey}` },
-          timeout: this.timeout,
-        }
+        `${API_BASE}/workspaces/${this.orgId}/views/${this.warehousesViewId}/rows`,
+        { headers: this.authHeaders(token), timeout: 10_000 }
       );
-      return res.data.data.rows as ZohoWarehouse[];
+      return (res.data?.data?.rows ?? res.data?.rows ?? []) as ZohoWarehouse[];
     });
   }
 
   async fetchSystemInventory(warehouseId: string): Promise<ZohoInventoryRecord[]> {
-    if (this.useMock) {
+    if (this.useMock) return buildMockInventory(warehouseId);
+    if (!this.inventoryViewId) {
+      logger.warn('ZohoClient: ZOHO_INVENTORY_VIEW_ID not set, using mock inventory');
       return buildMockInventory(warehouseId);
     }
     return withRetry(async () => {
-      const { default: axios } = await import('axios');
+      const token = await this.getAccessToken();
       const res = await axios.get(
-        `https://analyticsapi.zoho.com/api/v2/${this.orgId}/views/inventory/rows`,
+        `${API_BASE}/workspaces/${this.orgId}/views/${this.inventoryViewId}/rows`,
         {
-          headers: { 'ZANALYTICS-ORGID': this.orgId!, Authorization: `Zoho-oauthtoken ${this.apiKey}` },
+          headers: this.authHeaders(token),
           params: { warehouse_id: warehouseId },
-          timeout: this.timeout,
+          timeout: 10_000,
         }
       );
-      return res.data.data.rows as ZohoInventoryRecord[];
+      return (res.data?.data?.rows ?? res.data?.rows ?? []) as ZohoInventoryRecord[];
     });
   }
 }
