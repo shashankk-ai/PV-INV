@@ -5,8 +5,11 @@ import { useSession } from '../contexts/SessionContext';
 import { useSite } from '../contexts/SiteContext';
 import { useNavigate } from 'react-router-dom';
 import BottomNav from '../components/BottomNav';
+import OfflineBanner from '../components/OfflineBanner';
 import RackScanPage from './RackScanPage';
 import api from '../lib/axios';
+import { db } from '../lib/db';
+import { useSync } from '../contexts/SyncContext';
 import { PackingType } from '@litmus/shared';
 
 interface Entry {
@@ -39,10 +42,18 @@ const BADGE_COLORS: Record<PackingType, string> = {
 export default function ScanLogPage() {
   const { session, setScanCount } = useSession();
   const { site } = useSite();
+  const { pendingCount, triggerSync } = useSync();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
+
+  // Pending scans from IndexedDB
+  const { data: pendingScans } = useQuery({
+    queryKey: ['pending-scans'],
+    queryFn: () => db.pending_scans.toArray(),
+    refetchInterval: 5000,
+  });
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['entries', session?.id],
@@ -101,12 +112,16 @@ export default function ScanLogPage() {
           <p className="font-semibold text-sm opacity-70 leading-tight">Scan Log</p>
           <p className="font-bold text-base leading-tight">{site.name}</p>
         </div>
-        <span className="text-sm opacity-70">{entries.length} scans</span>
+        <span className="text-sm opacity-70">
+          {entries.length} scans{pendingCount > 0 && ` (${pendingCount} pending)`}
+        </span>
       </header>
+
+      <OfflineBanner />
 
       {/* Pull-to-refresh hint */}
       <button
-        onClick={() => refetch()}
+        onClick={() => { refetch(); triggerSync(); }}
         className="mx-4 mt-3 text-xs text-teal flex items-center gap-1 self-start"
       >
         <RefreshIcon className="w-3.5 h-3.5" /> Refresh
@@ -123,10 +138,29 @@ export default function ScanLogPage() {
               </div>
             ))}
           </div>
-        ) : entries.length === 0 ? (
+        ) : entries.length === 0 && (!pendingScans || pendingScans.length === 0) ? (
           <EmptyState />
         ) : (
           <ul className="flex flex-col gap-3">
+            {/* Pending (offline) scans */}
+            {(pendingScans ?? []).map((ps) => (
+              <li key={ps.id}>
+                <div className="card border-l-4 border-amber-400 p-4 flex items-center gap-3 opacity-80">
+                  <ClockIcon className="w-5 h-5 text-amber-500 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-mono font-bold text-navy text-sm">
+                      {(ps.payload as Record<string, unknown>).rack_number as string ?? '—'}
+                    </p>
+                    <p className="text-sm text-gray-600 truncate">
+                      {(ps.payload as Record<string, unknown>).item_name as string ?? 'Unknown item'}
+                    </p>
+                  </div>
+                  <span className="text-xs text-amber-600 font-medium bg-amber-50 px-2 py-1 rounded-full flex-shrink-0">
+                    Pending
+                  </span>
+                </div>
+              </li>
+            ))}
             {entries.map((e) => (
               <li key={e.id}>
                 <div
@@ -234,6 +268,15 @@ function TrashIcon({ className }: { className?: string }) {
       <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
       <path d="M10 11v6M14 11v6" />
       <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
+    </svg>
+  );
+}
+
+function ClockIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
     </svg>
   );
 }

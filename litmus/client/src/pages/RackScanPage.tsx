@@ -13,7 +13,11 @@ import Stepper from '../components/ui/Stepper';
 import PackingTypeSelector from '../components/ui/PackingTypeSelector';
 import PhotoStrip, { PhotoItem } from '../components/PhotoStrip';
 import OcrSuggestion from '../components/OcrSuggestion';
+import OfflineBanner from '../components/OfflineBanner';
 import api from '../lib/axios';
+import { saveScanOffline } from '../lib/syncEngine';
+import { useNetwork } from '../contexts/NetworkContext';
+import { useSync } from '../contexts/SyncContext';
 
 const PACKING_TYPES = ['drums', 'bags', 'bottles', 'cans', 'cartons', 'pallets', 'other'] as const;
 
@@ -46,6 +50,8 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
   const { site } = useSite();
   const { session, setSession, scanCount, setScanCount } = useSession();
   const { logout } = useAuth();
+  const { isOnline } = useNetwork();
+  const { refreshPendingCount } = useSync();
   const navigate = useNavigate();
   const [uomOptions, setUomOptions] = useState<string[]>([]);
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
@@ -128,6 +134,24 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
 
   const onSubmit = async (data: FormData) => {
     if (!session) { toast.error('No active session. Please select a site again.'); return; }
+
+    // Offline path
+    if (!isOnline) {
+      await saveScanOffline(
+        session.id,
+        data as unknown as Record<string, unknown>,
+        photos.map((p, i) => ({ blob: p.blob, filename: `photo_${i}.jpg` }))
+      );
+      toast.success('Scan saved locally ✓', { icon: '📲' });
+      setScanCount((n) => n + 1);
+      refreshPendingCount();
+      reset({ units: 1, packing_size: 1, packing_type: undefined });
+      setUomOptions([]);
+      setPhotos([]);
+      setOcrText(null);
+      return;
+    }
+
     const idempotencyKey = editEntry?.id ? undefined : crypto.randomUUID();
     try {
       if (editEntry?.id) {
@@ -150,6 +174,23 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
         setOcrText(null);
       }
     } catch (err: unknown) {
+      // Network error — fall back to offline storage
+      const isNetworkError = !(err as { response?: unknown })?.response;
+      if (isNetworkError && !editEntry?.id) {
+        await saveScanOffline(
+          session.id,
+          data as unknown as Record<string, unknown>,
+          photos.map((p, i) => ({ blob: p.blob, filename: `photo_${i}.jpg` }))
+        );
+        toast.success('Connection lost — scan saved locally ✓', { icon: '📲' });
+        setScanCount((n) => n + 1);
+        refreshPendingCount();
+        reset({ units: 1, packing_size: 1, packing_type: undefined });
+        setUomOptions([]);
+        setPhotos([]);
+        setOcrText(null);
+        return;
+      }
       const msg =
         (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ??
         'Failed to save. Try again.';
@@ -178,6 +219,8 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
           </button>
         </div>
       </header>
+
+      <OfflineBanner />
 
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit)} className="flex-1 px-4 py-4 max-w-lg mx-auto w-full space-y-5">

@@ -4,6 +4,8 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './contexts/AuthContext';
 import { SiteProvider } from './contexts/SiteContext';
 import { SessionProvider } from './contexts/SessionContext';
+import { NetworkProvider } from './contexts/NetworkContext';
+import { SyncProvider } from './contexts/SyncContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
 import SiteSelectPage from './pages/SiteSelectPage';
@@ -20,8 +22,10 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <NetworkProvider>
         <SiteProvider>
           <SessionProvider>
+          <SyncProvider>
             <BrowserRouter>
               <Routes>
                 <Route path="/login" element={<LoginPage />} />
@@ -57,8 +61,10 @@ export default function App() {
                 style: { fontFamily: 'Inter, system-ui, sans-serif', fontSize: '14px' },
               }}
             />
+          </SyncProvider>
           </SessionProvider>
         </SiteProvider>
+        </NetworkProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

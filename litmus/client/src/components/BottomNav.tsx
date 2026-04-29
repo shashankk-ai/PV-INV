@@ -1,10 +1,13 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useSession } from '../contexts/SessionContext';
+import { useSync } from '../contexts/SyncContext';
 
 export default function BottomNav() {
   const navigate = useNavigate();
   const location = useLocation();
   const { scanCount } = useSession();
+  const { pendingCount } = useSync();
+  const totalBadge = scanCount + pendingCount;
 
   const isScan = location.pathname === '/scan';
   const isLog = location.pathname === '/log';
@@ -26,10 +29,11 @@ export default function BottomNav() {
           ${isLog ? 'text-teal' : 'text-gray-400'}`}
       >
         <ListIcon active={isLog} />
-        {scanCount > 0 && (
-          <span className="absolute top-2 right-1/4 -translate-x-2 bg-teal text-white text-xs rounded-full
-                           min-w-[18px] h-[18px] flex items-center justify-center font-bold px-1">
-            {scanCount > 99 ? '99+' : scanCount}
+        {totalBadge > 0 && (
+          <span className={`absolute top-2 right-1/4 -translate-x-2 text-white text-xs rounded-full
+                           min-w-[18px] h-[18px] flex items-center justify-center font-bold px-1
+                           ${pendingCount > 0 ? 'bg-amber-500' : 'bg-teal'}`}>
+            {totalBadge > 99 ? '99+' : totalBadge}
           </span>
         )}
         <span className="text-xs font-medium">Log</span>
