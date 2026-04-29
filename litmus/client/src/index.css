@@ -7,39 +7,69 @@
     -webkit-tap-highlight-color: transparent;
   }
   body {
-    @apply bg-white text-navy font-sans antialiased;
+    @apply bg-gray-50 text-navy font-sans antialiased;
     overscroll-behavior: none;
   }
 }
 
 @layer components {
   .btn-primary {
-    @apply bg-teal text-white font-semibold rounded-xl h-touch-lg px-6
-           flex items-center justify-center w-full
-           active:scale-[0.98] transition-transform duration-100
-           disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply relative overflow-hidden
+           bg-gradient-to-br from-teal-500 to-teal-700
+           text-white font-semibold rounded-2xl h-touch-lg px-6
+           flex items-center justify-center w-full gap-2
+           shadow-md shadow-teal-500/25
+           active:scale-[0.97] transition-all duration-150
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none;
   }
   .btn-outline {
-    @apply border-2 border-teal text-teal font-semibold rounded-xl h-touch-lg px-6
-           flex items-center justify-center w-full
-           active:scale-[0.98] transition-transform duration-100;
+    @apply border-2 border-teal text-teal font-semibold rounded-2xl h-touch-lg px-6
+           flex items-center justify-center w-full gap-2
+           active:scale-[0.97] transition-all duration-150;
+  }
+  .btn-ghost {
+    @apply text-gray-500 font-medium rounded-xl px-4 py-2
+           flex items-center justify-center gap-2
+           hover:bg-gray-100 active:bg-gray-200
+           transition-colors duration-150;
   }
   .btn-gold {
-    @apply bg-gold text-white font-semibold rounded-xl h-touch-lg px-6
-           flex items-center justify-center w-full
-           active:scale-[0.98] transition-transform duration-100;
+    @apply bg-gradient-to-br from-amber-400 to-amber-600
+           text-white font-semibold rounded-2xl h-touch-lg px-6
+           flex items-center justify-center w-full gap-2
+           shadow-md shadow-amber-400/25
+           active:scale-[0.97] transition-all duration-150;
   }
   .input-field {
-    @apply w-full h-touch rounded-xl border border-gray-200 px-4 text-navy
-           focus:outline-none focus:ring-2 focus:ring-teal focus:border-transparent
-           placeholder:text-gray-400 text-base;
+    @apply w-full h-touch rounded-2xl border border-gray-200 px-4 text-navy
+           bg-white
+           focus:outline-none focus:ring-2 focus:ring-teal/40 focus:border-teal
+           placeholder:text-gray-400 text-base
+           transition-shadow duration-150;
   }
   .card {
-    @apply bg-white rounded-card shadow-card border border-gray-100;
+    @apply bg-white rounded-2xl border border-gray-100 shadow-sm;
+  }
+  .card-hover {
+    @apply card hover:shadow-md hover:-translate-y-0.5 transition-all duration-200;
   }
   .nav-bar {
-    @apply bg-navy text-white px-4 py-3 flex items-center justify-between;
+    @apply bg-gradient-to-r from-[#1e1548] to-[#4B3B8C]
+           text-white px-4 py-3 flex items-center justify-between
+           shadow-lg shadow-[#4B3B8C]/20;
   }
+  .section-title {
+    @apply text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full;
+  }
+  .badge-purple { @apply badge bg-purple-100 text-[#4B3B8C]; }
+  .badge-teal   { @apply badge bg-teal-50 text-teal-700; }
+  .badge-red    { @apply badge bg-red-100 text-red-700; }
+  .badge-amber  { @apply badge bg-amber-100 text-amber-700; }
+  .badge-blue   { @apply badge bg-blue-100 text-blue-700; }
+  .badge-gray   { @apply badge bg-gray-100 text-gray-600; }
 }
 
 /* Keyframes */
@@ -49,43 +79,44 @@
 }
 
 @keyframes slide-down {
-  from { transform: translateY(-100%); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from { transform: translateY(-12px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
 }
 
 @keyframes slide-up {
   from { transform: translateY(16px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+@keyframes scale-in {
+  from { transform: scale(0.94); opacity: 0; }
+  to   { transform: scale(1);    opacity: 1; }
 }
 
 @keyframes fade-in {
   from { opacity: 0; }
-  to { opacity: 1; }
+  to   { opacity: 1; }
 }
 
-.animate-pulse-teal {
-  animation: pulse-teal 2s ease-in-out infinite;
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
 }
 
-.animate-slide-down {
-  animation: slide-down 0.3s ease-out;
-}
-
-.animate-slide-up {
-  animation: slide-up 0.2s ease-out both;
-}
-
-.animate-fade-in {
-  animation: fade-in 0.15s ease-out both;
-}
+.animate-pulse-teal  { animation: pulse-teal 2s ease-in-out infinite; }
+.animate-slide-down  { animation: slide-down 0.25s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-slide-up    { animation: slide-up  0.25s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-scale-in    { animation: scale-in  0.2s  cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-fade-in     { animation: fade-in   0.15s ease-out both; }
+.animate-sheet-up    { animation: sheet-up  0.35s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
 /* Staggered list entrance */
-li:nth-child(1) { animation-delay: 0ms; }
-li:nth-child(2) { animation-delay: 30ms; }
-li:nth-child(3) { animation-delay: 60ms; }
-li:nth-child(4) { animation-delay: 90ms; }
-li:nth-child(5) { animation-delay: 120ms; }
-li:nth-child(n+6) { animation-delay: 150ms; }
+li:nth-child(1)    { animation-delay: 0ms;   }
+li:nth-child(2)    { animation-delay: 40ms;  }
+li:nth-child(3)    { animation-delay: 80ms;  }
+li:nth-child(4)    { animation-delay: 120ms; }
+li:nth-child(5)    { animation-delay: 160ms; }
+li:nth-child(n+6)  { animation-delay: 200ms; }
 
 /* iOS safe area support */
 .safe-area-bottom {
@@ -95,6 +126,6 @@ li:nth-child(n+6) { animation-delay: 150ms; }
 /* Print styles for Truth Report */
 @media print {
   .print\:hidden { display: none !important; }
-  .print\:block { display: block !important; }
+  .print\:block  { display: block !important; }
   body { background: white !important; }
 }
