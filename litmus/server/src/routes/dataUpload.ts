@@ -161,21 +161,34 @@ router.post(
         return null;
       };
 
-      // ── 5. Upsert system inventory ─────────────────────────────────────────
-      let upserted = 0;
+      // ── 5. Bulk-replace system inventory ──────────────────────────────────
+      // Build all records in memory, then delete + createMany in one transaction
+      const inventoryRows: {
+        item_key: string; item_name: string; warehouse_id: string;
+        quantity: number; uom: string; uom_options: string[];
+      }[] = [];
+
       for (const rec of records) {
         const wh = resolveWarehouse(rec);
-        const targetWarehouses = wh ? [wh] : dbWarehouses;
-
-        for (const targetWh of targetWarehouses) {
-          await prisma.systemInventoryCache.upsert({
-            where:  { item_key_warehouse_id: { item_key: rec.item_key, warehouse_id: targetWh.id } },
-            update: { item_name: rec.item_name, quantity: rec.quantity, uom: rec.uom, uom_options: rec.uom_options, synced_at: new Date() },
-            create: { item_key: rec.item_key, item_name: rec.item_name, warehouse_id: targetWh.id, quantity: rec.quantity, uom: rec.uom, uom_options: rec.uom_options },
+        const targets = wh ? [wh] : dbWarehouses;
+        for (const targetWh of targets) {
+          inventoryRows.push({
+            item_key: rec.item_key,
+            item_name: rec.item_name,
+            warehouse_id: targetWh.id,
+            quantity: rec.quantity,
+            uom: rec.uom,
+            uom_options: rec.uom_options,
           });
-          upserted++;
         }
       }
+
+      const warehouseIds = dbWarehouses.map((w) => w.id);
+      await prisma.$transaction([
+        prisma.systemInventoryCache.deleteMany({ where: { warehouse_id: { in: warehouseIds } } }),
+        prisma.systemInventoryCache.createMany({ data: inventoryRows, skipDuplicates: true }),
+      ]);
+      const upserted = inventoryRows.length;
 
       // ── 6. Rebuild Redis items cache ───────────────────────────────────────
       const uniqueItems = Array.from(
