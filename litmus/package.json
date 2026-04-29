@@ -15,8 +15,9 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,json,css}\" --ignore-path .gitignore"
   },
   "devDependencies": {
+    "@types/node-cron": "^3.0.11",
     "concurrently": "^8.2.2",
-    "prettier": "^3.2.5",
-    "eslint": "^8.57.0"
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5"
   }
 }
