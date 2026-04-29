@@ -22,6 +22,14 @@ import { dataSyncService } from './services/DataSyncService';
 import { logger } from './utils/logger';
 import { ApiResponse } from '@litmus/shared';
 
+// Keep the process alive even if an async handler throws without being caught
+process.on('unhandledRejection', (reason) => {
+  logger.error({ reason }, 'Unhandled promise rejection — server kept alive');
+});
+process.on('uncaughtException', (err) => {
+  logger.error({ err }, 'Uncaught exception — server kept alive');
+});
+
 (globalThis as Record<string, unknown>).__litmus_start = Date.now();
 
 const app = express();

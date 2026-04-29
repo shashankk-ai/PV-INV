@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -20,6 +20,7 @@ import { useNetwork } from '../contexts/NetworkContext';
 import { useSync } from '../contexts/SyncContext';
 
 const PACKING_TYPES = ['drums', 'bags', 'bottles', 'cans', 'cartons', 'pallets', 'other'] as const;
+const DRAFT_KEY = 'litmus_scan_draft';
 
 const schema = z
   .object({
@@ -53,9 +54,29 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
   const { isOnline } = useNetwork();
   const { refreshPendingCount } = useSync();
   const navigate = useNavigate();
-  const [uomOptions, setUomOptions] = useState<string[]>([]);
+  const [uomOptions, setUomOptions] = useState<string[]>(() => {
+    if (editEntry) return [];
+    try {
+      const draft = sessionStorage.getItem(DRAFT_KEY);
+      if (draft) {
+        const d = JSON.parse(draft) as Partial<FormData>;
+        return d.uom ? [d.uom] : [];
+      }
+    } catch { /* ignore */ }
+    return [];
+  });
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [ocrText, setOcrText] = useState<string | null>(null);
+
+  const defaultValues = useMemo(() => {
+    if (editEntry) return { ...editEntry, units: editEntry.units ?? 1, packing_size: editEntry.packing_size ?? 1 };
+    try {
+      const draft = sessionStorage.getItem(DRAFT_KEY);
+      if (draft) return JSON.parse(draft) as Partial<FormData>;
+    } catch { /* ignore */ }
+    return { units: 1, packing_size: 1, packing_type: undefined };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const {
     register,
@@ -67,14 +88,20 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
     formState: { errors, isSubmitting },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: editEntry
-      ? { ...editEntry, units: editEntry.units ?? 1, packing_size: editEntry.packing_size ?? 1 }
-      : { units: 1, packing_size: 1, packing_type: undefined },
+    defaultValues,
   });
 
-  const units = watch('units') ?? 1;
-  const packingSize = watch('packing_size') ?? 1;
+  const formValues = watch();
+  const units = formValues.units ?? 1;
+  const packingSize = formValues.packing_size ?? 1;
   const totalQty = units * packingSize;
+
+  // Persist draft so camera / page-reload doesn't wipe filled fields
+  useEffect(() => {
+    if (!editEntry) {
+      try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify(formValues)); } catch { /* ignore */ }
+    }
+  }, [formValues, editEntry]);
 
   useEffect(() => { if (!site) navigate('/sites'); }, [site, navigate]);
 
@@ -145,6 +172,7 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
       toast.success('Scan saved locally ✓', { icon: '📲' });
       setScanCount((n) => n + 1);
       refreshPendingCount();
+      sessionStorage.removeItem(DRAFT_KEY);
       reset({ units: 1, packing_size: 1, packing_type: undefined });
       setUomOptions([]);
       setPhotos([]);
@@ -168,6 +196,7 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
         if (photos.length > 0) await uploadPhotos(entryId, session.id);
         toast.success('Scan logged ✓');
         setScanCount((n) => n + 1);
+        sessionStorage.removeItem(DRAFT_KEY);
         reset({ units: 1, packing_size: 1, packing_type: undefined });
         setUomOptions([]);
         setPhotos([]);
@@ -185,6 +214,7 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
         toast.success('Connection lost — scan saved locally ✓', { icon: '📲' });
         setScanCount((n) => n + 1);
         refreshPendingCount();
+        sessionStorage.removeItem(DRAFT_KEY);
         reset({ units: 1, packing_size: 1, packing_type: undefined });
         setUomOptions([]);
         setPhotos([]);
