@@ -32,6 +32,7 @@ interface Warehouse {
 interface AdminUser {
   id: string;
   username: string;
+  email: string;
   role: 'ops' | 'admin';
   created_at: string;
   sessions_today: number;
@@ -252,6 +253,7 @@ export default function AdminDashboard() {
                           {u.role}
                         </span>
                       </div>
+                      <p className="text-xs text-gray-400 mt-0.5">{u.email}</p>
                       <p className="text-xs text-gray-400 mt-0.5">
                         {u.sessions_today} session{u.sessions_today !== 1 ? 's' : ''} · {u.scans_today} scans today
                       </p>
@@ -293,13 +295,16 @@ export default function AdminDashboard() {
 
 function AddUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [username, setUsername] = useState('');
+  const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'ops' | 'admin'>('ops');
   const [error, setError] = useState('');
 
+  const canSubmit = username.trim().length >= 3 && email.trim().includes('@') && password.length >= 8;
+
   const mutation = useMutation({
-    mutationFn: () => api.post('/admin/users', { username, password, role }),
-    onSuccess: () => { toast.success(`User "${username}" created`); onCreated(); },
+    mutationFn: () => api.post('/admin/users', { username, email, password, role }),
+    onSuccess: () => { toast.success(`User "${username}" created — welcome email sent`); onCreated(); },
     onError: (e: unknown) => {
       const msg = (e as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? 'Could not create user';
       setError(msg);
@@ -324,6 +329,20 @@ function AddUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
               placeholder="e.g. john_ops"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
+              autoCapitalize="none"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+              Email <span className="text-red-500">*</span>
+              <span className="ml-1 text-gray-400 normal-case font-normal">— welcome email sent here</span>
+            </label>
+            <input
+              className="input-field"
+              type="email"
+              placeholder="john@company.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               autoCapitalize="none"
             />
           </div>
@@ -368,7 +387,7 @@ function AddUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
           <button onClick={onClose} className="btn-outline flex-1">Cancel</button>
           <button
             onClick={() => { setError(''); mutation.mutate(); }}
-            disabled={mutation.isPending || !username || !password}
+            disabled={mutation.isPending || !canSubmit}
             className="flex-1 h-touch-lg rounded-2xl font-semibold text-sm text-white
               bg-gradient-to-br from-[#4B3B8C] to-[#6B4FB0]
               shadow-md shadow-[#4B3B8C]/25

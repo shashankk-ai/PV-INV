@@ -6,6 +6,7 @@ import { validate } from '../middleware/validate';
 import { prisma } from '../services/prisma';
 import { ok, created } from '../utils/respond';
 import { AppError } from '../utils/AppError';
+import { sendWelcomeEmail } from '../services/emailService';
 
 const router = Router();
 
@@ -93,6 +94,7 @@ router.get('/users', requireAuth, requireAdmin, async (_req: Request, res: Respo
       select: {
         id: true,
         username: true,
+        email: true,
         role: true,
         created_at: true,
         pv_sessions: {
@@ -110,6 +112,7 @@ router.get('/users', requireAuth, requireAdmin, async (_req: Request, res: Respo
     const result = users.map((u) => ({
       id: u.id,
       username: u.username,
+      email: u.email,
       role: u.role,
       created_at: u.created_at,
       sessions_today: u.pv_sessions.length,
@@ -124,6 +127,7 @@ router.get('/users', requireAuth, requireAdmin, async (_req: Request, res: Respo
 
 const createUserSchema = z.object({
   username: z.string().min(3, 'Min 3 characters').max(32).regex(/^[a-z0-9_]+$/, 'Lowercase letters, numbers and _ only'),
+  email: z.string().email('Enter a valid email address'),
   password: z.string().min(8, 'Min 8 characters'),
   role: z.enum(['ops', 'admin']),
 });
@@ -136,15 +140,25 @@ const updateUserSchema = z.object({
 // POST /api/admin/users — create a new user
 router.post('/users', requireAuth, requireAdmin, validate(createUserSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { username, password, role } = req.body as z.infer<typeof createUserSchema>;
-    const existing = await prisma.user.findUnique({ where: { username } });
-    if (existing) throw AppError.conflict('Username already taken');
+    const { username, email, password, role } = req.body as z.infer<typeof createUserSchema>;
+
+    const [existingUsername, existingEmail] = await Promise.all([
+      prisma.user.findUnique({ where: { username } }),
+      prisma.user.findUnique({ where: { email } }),
+    ]);
+    if (existingUsername) throw AppError.conflict('Username already taken');
+    if (existingEmail)   throw AppError.conflict('Email already registered');
 
     const hashed = await bcrypt.hash(password, 12);
     const user = await prisma.user.create({
-      data: { username, password: hashed, role },
-      select: { id: true, username: true, role: true, created_at: true },
+      data: { username, email, password: hashed, role },
+      select: { id: true, username: true, email: true, role: true, created_at: true },
     });
+
+    // Send welcome email — non-blocking, failure doesn't affect response
+    const appUrl = process.env.CLIENT_URL ?? 'http://localhost:5173';
+    sendWelcomeEmail({ to: email, username, password, role, appUrl }).catch(() => {});
+
     created(res, user);
   } catch (err) {
     next(err);

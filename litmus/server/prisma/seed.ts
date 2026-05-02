@@ -64,12 +64,12 @@ async function main() {
   await prisma.user.upsert({
     where: { username: 'ops_user' },
     update: {},
-    create: { username: 'ops_user', password: opsHash, role: 'ops' },
+    create: { username: 'ops_user', email: 'ops@litmus.local', password: opsHash, role: 'ops' },
   });
   await prisma.user.upsert({
     where: { username: 'admin_user' },
     update: {},
-    create: { username: 'admin_user', password: adminHash, role: 'admin' },
+    create: { username: 'admin_user', email: 'admin@litmus.local', password: adminHash, role: 'admin' },
   });
   console.log('✅ 2 users seeded (ops_user, admin_user) — password: password123');
 
