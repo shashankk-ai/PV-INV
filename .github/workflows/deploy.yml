@@ -81,6 +81,11 @@ jobs:
               --env-file /opt/litmus/.env \
               $IMAGE
 
-            sleep 5
-            sudo docker logs litmus --tail 20
-            echo "Live at http://${{ secrets.EC2_HOST }}"
+            # Wait and verify container is still running
+            sleep 10
+            sudo docker logs litmus --tail 30
+            if ! sudo docker ps --filter "name=litmus" --filter "status=running" | grep litmus; then
+              echo "ERROR: container is not running"
+              exit 1
+            fi
+            echo "SUCCESS: Live at http://${{ secrets.EC2_HOST }}"
