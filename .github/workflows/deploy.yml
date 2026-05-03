@@ -47,30 +47,28 @@ jobs:
           username: ec2-user
           key:      ${{ secrets.EC2_SSH_KEY }}
           script: |
+            set -e
             ECR=115253169289.dkr.ecr.ap-south-1.amazonaws.com
             IMAGE=$ECR/litmus:latest
 
-            # ECR login
-            sudo AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }} \
-                 AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }} \
-                 AWS_DEFAULT_REGION=ap-south-1 \
-                 aws ecr get-login-password --region ap-south-1 | \
-                 sudo docker login --username AWS --password-stdin $ECR
+            # Write AWS credentials for root
+            sudo mkdir -p /root/.aws
+            sudo tee /root/.aws/credentials > /dev/null <<EOF
+            [default]
+            aws_access_key_id = ${{ secrets.AWS_ACCESS_KEY_ID }}
+            aws_secret_access_key = ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            region = ap-south-1
+            EOF
 
-            # Pull latest image
+            # ECR login + pull
+            sudo aws ecr get-login-password --region ap-south-1 | \
+              sudo docker login --username AWS --password-stdin $ECR
             sudo docker pull $IMAGE
 
-            # Update CLIENT_URL in .env to point to this server
+            # Update CLIENT_URL in .env
             sudo sed -i 's|CLIENT_URL=.*|CLIENT_URL=http://${{ secrets.EC2_HOST }}|' /opt/litmus/.env
 
-            # Run DB migrations
-            sudo docker run --rm --env-file /opt/litmus/.env $IMAGE \
-              node -e "
-                const {execSync}=require('child_process');
-                execSync('npx prisma migrate deploy --schema=server/prisma/schema.prisma',{cwd:'/app',stdio:'inherit'});
-              "
-
-            # Restart container on port 80
+            # Restart container on port 80 (migrations run automatically on startup)
             sudo docker stop litmus 2>/dev/null || true
             sudo docker rm   litmus 2>/dev/null || true
             sudo docker run -d \
@@ -80,4 +78,4 @@ jobs:
               -p 80:3001 \
               $IMAGE
 
-            echo "Deploy complete — http://${{ secrets.EC2_HOST }}"
+            echo "Live at http://${{ secrets.EC2_HOST }}"

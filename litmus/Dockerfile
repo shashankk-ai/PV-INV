@@ -33,4 +33,4 @@ COPY --from=builder /app/client/dist ./client/dist
 # Static uploads directory
 RUN mkdir -p /app/uploads
 EXPOSE 3001
-CMD ["node", "server/dist/index.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy --schema=server/prisma/schema.prisma && node server/dist/index.js"]
