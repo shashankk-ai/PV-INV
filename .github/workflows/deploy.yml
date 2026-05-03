@@ -46,30 +46,38 @@ jobs:
           host:     ${{ secrets.EC2_HOST }}
           username: ec2-user
           key:      ${{ secrets.EC2_SSH_KEY }}
-          envs:     AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY
           script: |
-            # Write deploy script with embedded credentials
-            sudo tee /opt/litmus/deploy.sh > /dev/null << 'DEPLOY'
-            #!/bin/bash
-            set -e
-            export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
-            export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
-            export AWS_DEFAULT_REGION=ap-south-1
-            aws ecr get-login-password --region ap-south-1 | \
-              docker login --username AWS --password-stdin 115253169289.dkr.ecr.ap-south-1.amazonaws.com
-            docker pull 115253169289.dkr.ecr.ap-south-1.amazonaws.com/litmus:latest
-            docker stop litmus 2>/dev/null || true
-            docker rm litmus 2>/dev/null || true
-            docker run -d \
-              --name litmus \
-              --restart always \
-              --env-file /opt/litmus/.env \
-              -p 3001:3001 \
-              115253169289.dkr.ecr.ap-south-1.amazonaws.com/litmus:latest
-            echo "Deploy complete"
-            DEPLOY
-            sudo chmod +x /opt/litmus/deploy.sh
+            ECR=115253169289.dkr.ecr.ap-south-1.amazonaws.com
+            IMAGE=$ECR/litmus:latest
+
+            # ECR login
             sudo AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }} \
                  AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }} \
                  AWS_DEFAULT_REGION=ap-south-1 \
-                 /opt/litmus/deploy.sh
+                 aws ecr get-login-password --region ap-south-1 | \
+                 sudo docker login --username AWS --password-stdin $ECR
+
+            # Pull latest image
+            sudo docker pull $IMAGE
+
+            # Update CLIENT_URL in .env to point to this server
+            sudo sed -i 's|CLIENT_URL=.*|CLIENT_URL=http://${{ secrets.EC2_HOST }}|' /opt/litmus/.env
+
+            # Run DB migrations
+            sudo docker run --rm --env-file /opt/litmus/.env $IMAGE \
+              node -e "
+                const {execSync}=require('child_process');
+                execSync('npx prisma migrate deploy --schema=server/prisma/schema.prisma',{cwd:'/app',stdio:'inherit'});
+              "
+
+            # Restart container on port 80
+            sudo docker stop litmus 2>/dev/null || true
+            sudo docker rm   litmus 2>/dev/null || true
+            sudo docker run -d \
+              --name litmus \
+              --restart always \
+              --env-file /opt/litmus/.env \
+              -p 80:3001 \
+              $IMAGE
+
+            echo "Deploy complete — http://${{ secrets.EC2_HOST }}"
