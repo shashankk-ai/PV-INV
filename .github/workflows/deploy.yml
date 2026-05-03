@@ -68,14 +68,19 @@ jobs:
             # Update CLIENT_URL in .env
             sudo sed -i 's|CLIENT_URL=.*|CLIENT_URL=http://${{ secrets.EC2_HOST }}|' /opt/litmus/.env
 
-            # Restart container on port 80 (migrations run automatically on startup)
+            # Set port to 80 and use host network (so 127.0.0.1 = EC2 host, fixes Redis)
+            sudo sed -i 's|^PORT=.*|PORT=80|' /opt/litmus/.env
+
+            # Restart container
             sudo docker stop litmus 2>/dev/null || true
             sudo docker rm   litmus 2>/dev/null || true
             sudo docker run -d \
               --name litmus \
               --restart always \
+              --network host \
               --env-file /opt/litmus/.env \
-              -p 80:3001 \
               $IMAGE
 
+            sleep 5
+            sudo docker logs litmus --tail 20
             echo "Live at http://${{ secrets.EC2_HOST }}"
