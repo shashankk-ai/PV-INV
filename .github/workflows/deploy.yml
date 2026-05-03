@@ -1,0 +1,50 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'litmus/**'
+
+defaults:
+  run:
+    working-directory: litmus
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ap-south-1
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag & push image to ECR
+        env:
+          REGISTRY:   ${{ steps.login-ecr.outputs.registry }}
+          REPOSITORY: litmus
+          IMAGE_TAG:  ${{ github.sha }}
+        run: |
+          docker build -t $REGISTRY/$REPOSITORY:$IMAGE_TAG -t $REGISTRY/$REPOSITORY:latest .
+          docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
+          docker push $REGISTRY/$REPOSITORY:latest
+          echo "image=$REGISTRY/$REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+        id: build-image
+        working-directory: litmus
+
+      - name: Trigger App Runner redeploy
+        run: |
+          aws apprunner start-deployment \
+            --service-arn ${{ secrets.APP_RUNNER_SERVICE_ARN }} \
+            --region ap-south-1
