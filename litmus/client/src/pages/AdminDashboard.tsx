@@ -98,6 +98,7 @@ export default function AdminDashboard() {
             <div className="w-8 h-8 rounded-full bg-white/15 border border-white/20 flex items-center justify-center text-xs font-bold">
               {user?.username.slice(0, 2).toUpperCase()}
             </div>
+            <span className="text-white/80 text-sm">{user?.username}</span>
             <button onClick={logout} className="text-white/60 hover:text-white text-sm transition-colors px-2 py-1">
               Out
             </button>
@@ -186,7 +187,7 @@ export default function AdminDashboard() {
                       <p className="text-xs text-gray-400 font-mono mt-0.5">{wh.location_code}</p>
                     </div>
                     <span className="badge-purple flex items-center gap-1 flex-shrink-0">
-                      View <ChevronRightIcon />
+                      View Report <ChevronRightIcon />
                     </span>
                   </button>
                 ))}
