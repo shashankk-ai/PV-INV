@@ -43,8 +43,11 @@ jobs:
         id: build-image
         working-directory: litmus
 
-      - name: Trigger App Runner redeploy
-        run: |
-          aws apprunner start-deployment \
-            --service-arn ${{ secrets.APP_RUNNER_SERVICE_ARN }} \
-            --region ap-south-1
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key:      ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            /opt/litmus/deploy.sh
