@@ -51,27 +51,45 @@ jobs:
             ECR=115253169289.dkr.ecr.ap-south-1.amazonaws.com
             IMAGE=$ECR/litmus:latest
 
+            # Ensure Redis + Docker are running
+            sudo systemctl start redis6 2>/dev/null || sudo systemctl start redis 2>/dev/null || true
+            sudo systemctl start docker
+
             # Write AWS credentials for root
             sudo mkdir -p /root/.aws
-            sudo tee /root/.aws/credentials > /dev/null <<EOF
-            [default]
-            aws_access_key_id = ${{ secrets.AWS_ACCESS_KEY_ID }}
-            aws_secret_access_key = ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-            region = ap-south-1
-            EOF
+            printf '[default]\naws_access_key_id = ${{ secrets.AWS_ACCESS_KEY_ID }}\naws_secret_access_key = ${{ secrets.AWS_SECRET_ACCESS_KEY }}\nregion = ap-south-1\n' | sudo tee /root/.aws/credentials > /dev/null
 
             # ECR login + pull
             sudo aws ecr get-login-password --region ap-south-1 | \
               sudo docker login --username AWS --password-stdin $ECR
             sudo docker pull $IMAGE
 
-            # Update CLIENT_URL in .env
-            sudo sed -i 's|CLIENT_URL=.*|CLIENT_URL=http://${{ secrets.EC2_HOST }}|' /opt/litmus/.env
+            # Recreate .env with all known-good values
+            sudo mkdir -p /opt/litmus
+            sudo tee /opt/litmus/.env > /dev/null << 'ENVEOF'
+            DATABASE_URL=postgresql://litmus:${{ secrets.DB_PASS }}@litmus-db.clkm64okcgml.ap-south-1.rds.amazonaws.com:5432/litmus_db?sslmode=no-verify
+            REDIS_URL=redis://127.0.0.1:6379
+            JWT_ACCESS_SECRET=${{ secrets.JWT_ACCESS_SECRET }}
+            JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET }}
+            JWT_ACCESS_EXPIRY=15m
+            JWT_REFRESH_EXPIRY=7d
+            PORT=80
+            NODE_ENV=production
+            CLIENT_URL=http://${{ secrets.EC2_HOST }}
+            STORAGE_BACKEND=s3
+            S3_BUCKET=litmus-photos-prod
+            S3_REGION=ap-south-1
+            S3_ACCESS_KEY=${{ secrets.AWS_ACCESS_KEY_ID }}
+            S3_SECRET_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            ENVEOF
 
-            # Set port to 80 and use host network (so 127.0.0.1 = EC2 host, fixes Redis)
-            sudo sed -i 's|^PORT=.*|PORT=80|' /opt/litmus/.env
+            # Run schema push (visible errors in logs)
+            echo "--- Running prisma db push ---"
+            sudo docker run --rm --network host --env-file /opt/litmus/.env $IMAGE \
+              sh -c "npx prisma db push --schema=server/prisma/schema.prisma --accept-data-loss --skip-generate 2>&1"
+            echo "--- Schema push complete ---"
 
-            # Restart container
+            # Start app
             sudo docker stop litmus 2>/dev/null || true
             sudo docker rm   litmus 2>/dev/null || true
             sudo docker run -d \
@@ -81,11 +99,11 @@ jobs:
               --env-file /opt/litmus/.env \
               $IMAGE
 
-            # Wait and verify container is still running
+            # Verify it's still running after 10s
             sleep 10
-            sudo docker logs litmus --tail 30
-            if ! sudo docker ps --filter "name=litmus" --filter "status=running" | grep litmus; then
-              echo "ERROR: container is not running"
+            sudo docker logs litmus --tail 40
+            if ! sudo docker ps --filter "name=litmus" --filter "status=running" | grep -q litmus; then
+              echo "ERROR: container crashed"
               exit 1
             fi
-            echo "SUCCESS: Live at http://${{ secrets.EC2_HOST }}"
+            echo "SUCCESS — http://${{ secrets.EC2_HOST }}"
