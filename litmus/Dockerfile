@@ -11,6 +11,7 @@ RUN npm ci --ignore-scripts
 FROM node:22-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
+COPY package.json ./
 COPY shared ./shared
 COPY server ./server
 COPY client ./client

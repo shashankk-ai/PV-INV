@@ -133,7 +133,7 @@ test.describe('Truth Report', () => {
   test('filter tabs narrow visible rows', async ({ page }) => {
     await page.goto('/admin/truth/wh1');
     // Click the Short filter button
-    await page.getByRole('button', { name: 'Short ↓' }).click();
+    await page.getByRole('button', { name: 'Short ↓', exact: true }).click();
     await expect(page.getByText('Acetone')).toBeVisible();
     await expect(page.getByText('Ethanol')).not.toBeVisible();
   });
