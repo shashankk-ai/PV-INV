@@ -165,12 +165,12 @@ export default function AdminDashboard() {
               <div className="flex items-center justify-between mb-2">
                 <h2 className="section-title mb-0">Truth Reports</h2>
               </div>
-              {warehouses.length > 3 && (
+              {warehouses.length > 0 && (
                 <div className="relative mb-2">
                   <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
                   <input
                     type="text"
-                    placeholder="Search warehouse…"
+                    placeholder="Search warehouse by name or code…"
                     value={warehouseSearch}
                     onChange={(e) => setWarehouseSearch(e.target.value)}
                     className="input-field pl-9 text-sm py-2"

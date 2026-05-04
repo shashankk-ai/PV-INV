@@ -170,26 +170,35 @@ router.post(
       };
 
       // ── 5. Bulk-replace system inventory ──────────────────────────────────
-      // Build all records in memory, then delete + createMany in one transaction
-      const inventoryRows: {
+      // Aggregate by item_key+warehouse_id — files often have one row per lot,
+      // so we SUM quantities across all lots for the same item+warehouse.
+      const aggregated = new Map<string, {
         item_key: string; item_name: string; warehouse_id: string;
         quantity: number; uom: string; uom_options: string[];
-      }[] = [];
+      }>();
 
       for (const rec of records) {
         const wh = resolveWarehouse(rec);
         const targets = wh ? [wh] : dbWarehouses;
         for (const targetWh of targets) {
-          inventoryRows.push({
-            item_key: rec.item_key,
-            item_name: rec.item_name,
-            warehouse_id: targetWh.id,
-            quantity: rec.quantity,
-            uom: rec.uom,
-            uom_options: rec.uom_options,
-          });
+          const key = `${rec.item_key}::${targetWh.id}`;
+          const existing = aggregated.get(key);
+          if (existing) {
+            existing.quantity += rec.quantity;
+          } else {
+            aggregated.set(key, {
+              item_key: rec.item_key,
+              item_name: rec.item_name,
+              warehouse_id: targetWh.id,
+              quantity: rec.quantity,
+              uom: rec.uom,
+              uom_options: rec.uom_options,
+            });
+          }
         }
       }
+
+      const inventoryRows = [...aggregated.values()];
 
       const warehouseIds = dbWarehouses.map((w) => w.id);
       await prisma.$transaction([
