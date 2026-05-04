@@ -135,24 +135,24 @@ export default function AdminDashboard() {
         {tab === 'overview' && (
           <>
             {/* Inventory KPIs */}
-            {(stats?.total_system_qty ?? 0) > 0 && (
-              <div className="grid grid-cols-2 gap-3">
-                <StatCard
-                  label="Total System Qty"
-                  value={stats?.total_system_qty?.toLocaleString('en-IN') ?? '—'}
-                  color="teal"
-                  icon={<BoxIcon />}
-                />
-                <StatCard
-                  label="Inventory Value"
-                  value={stats?.total_inventory_value
+            <div className="grid grid-cols-2 gap-3">
+              <StatCard
+                label="Total System Qty"
+                value={stats ? stats.total_system_qty.toLocaleString('en-IN') : '—'}
+                color="teal"
+                icon={<BoxIcon />}
+              />
+              <StatCard
+                label="Inventory Value"
+                value={stats
+                  ? stats.total_inventory_value > 0
                     ? `₹${(stats.total_inventory_value / 1_00_000).toFixed(1)}L`
-                    : '—'}
-                  color="green"
-                  icon={<ValueIcon />}
-                />
-              </div>
-            )}
+                    : '₹0'
+                  : '—'}
+                color="green"
+                icon={<ValueIcon />}
+              />
+            </div>
 
             {/* Stat Cards */}
             <div className="grid grid-cols-2 gap-3">
