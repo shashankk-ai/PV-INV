@@ -231,7 +231,7 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
   if (!site) return null;
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col pb-32">
+    <div className="min-h-screen bg-gray-50 flex flex-col pb-20">
       {/* Header */}
       <header className="nav-bar sticky top-0 z-20">
         <div>
@@ -393,25 +393,18 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
         {/* Photo Strip */}
         <PhotoStrip photos={photos} onAdd={handlePhotoAdd} onRemove={handlePhotoRemove} />
 
-        <div className="h-4" />
-      </form>
-
-      {/* Fixed bottom submit — sits above BottomNav including iPhone safe-area */}
-      <div
-        className="fixed left-0 right-0 px-4 pb-2 bg-gradient-to-t from-gray-50 to-transparent z-40"
-        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 64px)' }}
-      >
+        {/* Submit button — inside form, no z-index/positioning issues on mobile */}
         <button
           type="submit"
           disabled={isSubmitting}
-          onClick={() => handleSubmit(onSubmit, () => toast.error('Please fill all required fields'))()}
-          className="btn-primary h-[52px]"
+          className="btn-primary h-[52px] w-full mt-2"
         >
           {isSubmitting ? (
             <span className="flex items-center gap-2"><Spinner /> Saving...</span>
           ) : editEntry ? 'Update Scan' : 'Log Scan'}
         </button>
-      </div>
+        <div className="h-4" />
+      </form>
 
       <BottomNav />
     </div>
