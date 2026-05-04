@@ -115,9 +115,9 @@ router.post(
       });
 
       const entryId = crypto.randomUUID();
-      const snapshot = {
+      // pvEntryData must NOT include warehouse_id — that's not a PvEntry field
+      const pvEntryData = {
         session_id: sessionId,
-        warehouse_id: session.warehouse_id,
         rack_number: body.rack_number,
         item_name: body.item_name,
         item_key: body.item_key,
@@ -136,7 +136,7 @@ router.post(
 
       const [entry] = await prisma.$transaction([
         prisma.pvEntry.create({
-          data: { id: entryId, ...snapshot },
+          data: { id: entryId, ...pvEntryData },
           include: {
             photos: { select: { id: true, url: true, thumb_url: true } },
             user: { select: { username: true } },
@@ -150,7 +150,7 @@ router.post(
             action: 'CREATE',
             actor_id: userId,
             actor_name: res.locals.user.username,
-            snapshot: snapshot as object,
+            snapshot: { ...pvEntryData, warehouse_id: session.warehouse_id } as object,
           },
         }),
       ]);
