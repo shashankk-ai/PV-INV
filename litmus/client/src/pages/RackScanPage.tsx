@@ -26,7 +26,7 @@ const schema = z
   .object({
     rack_number:  z.string().min(1, 'Rack number is required'),
     item_name:    z.string().min(1, 'Item name is required'),
-    item_key:     z.string().min(1, 'Select an item from the list'),
+    item_key:     z.string().min(1, 'Must select an item from the suggestions list'),
     batch_number: z.string().min(3, 'Min 3 characters'),
     units:        z.number().int().min(1, 'Must be ≥ 1'),
     packing_size: z.number().int().min(1, 'Must be ≥ 1'),
@@ -308,13 +308,12 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
                 value={field.value ?? ''}
                 onChange={(name) => {
                   field.onChange(name);
-                  // Mirror typed name → item_key so form is always submittable.
-                  // onSelect() will overwrite this with the real key when user picks from dropdown.
-                  setValue('item_key', name, { shouldValidate: false });
+                  // Clear item_key on any manual typing — must select from dropdown
+                  setValue('item_key', '', { shouldValidate: false });
                 }}
                 onSelect={(chem) => { field.onChange(chem.item_name); handleItemSelect(chem); }}
                 error={errors.item_name?.message ?? errors.item_key?.message}
-                placeholder="Search chemical name..."
+                placeholder="Search and select from list..."
               />
             )}
           />
@@ -330,15 +329,18 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
           )}
         </div>
 
-        {/* Item Key */}
+        {/* Item Key — read-only, set by dropdown selection only */}
         <div>
-          <label className="block text-sm font-medium text-navy mb-1.5">Item Key <span className="text-xs font-normal text-gray-400">(auto-filled)</span></label>
+          <label className="block text-sm font-medium text-navy mb-1.5">Item Key <span className="text-xs font-normal text-gray-400">(auto-filled on selection)</span></label>
           <input
             {...register('item_key')}
             type="text"
-            className="input-field font-mono text-gray-600 bg-gray-50"
-            placeholder="Auto-filled on item selection"
+            readOnly
+            className={`input-field font-mono bg-gray-100 text-gray-500 cursor-not-allowed select-none
+              ${errors.item_key ? 'border-red-400 ring-1 ring-red-400' : ''}`}
+            placeholder="Select an item from the list above"
           />
+          {errors.item_key && <p className="mt-1 text-sm text-red-700">Must select an item from the suggestions list</p>}
         </div>
 
         {/* Batch Number */}
