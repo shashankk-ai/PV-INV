@@ -153,6 +153,24 @@ model DataUpload {
   @@map("data_uploads")
 }
 
+model ScanAuditLog {
+  id           String   @id @default(uuid())
+  entry_id     String   // intentionally no FK — audit survives entry deletion
+  session_id   String
+  warehouse_id String
+  action       String   // "CREATE" | "UPDATE" | "DELETE"
+  actor_id     String
+  actor_name   String
+  snapshot     Json     // full entry state at the moment of action
+  created_at   DateTime @default(now())
+
+  @@index([entry_id])
+  @@index([session_id])
+  @@index([warehouse_id])
+  @@index([created_at])
+  @@map("scan_audit_log")
+}
+
 model RefreshToken {
   id         String   @id @default(uuid())
   user_id    String
