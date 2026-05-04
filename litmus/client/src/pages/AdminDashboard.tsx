@@ -13,6 +13,8 @@ interface Stats {
   unlisted_items: number;
   total_entries: number;
   warehouses: number;
+  total_system_qty: number;
+  total_inventory_value: number;
 }
 
 interface AdminSession {
@@ -132,6 +134,26 @@ export default function AdminDashboard() {
 
         {tab === 'overview' && (
           <>
+            {/* Inventory KPIs */}
+            {(stats?.total_system_qty ?? 0) > 0 && (
+              <div className="grid grid-cols-2 gap-3">
+                <StatCard
+                  label="Total System Qty"
+                  value={stats?.total_system_qty?.toLocaleString('en-IN') ?? '—'}
+                  color="teal"
+                  icon={<BoxIcon />}
+                />
+                <StatCard
+                  label="Inventory Value"
+                  value={stats?.total_inventory_value
+                    ? `₹${(stats.total_inventory_value / 1_00_000).toFixed(1)}L`
+                    : '—'}
+                  color="green"
+                  icon={<ValueIcon />}
+                />
+              </div>
+            )}
+
             {/* Stat Cards */}
             <div className="grid grid-cols-2 gap-3">
               <StatCard
@@ -439,6 +461,7 @@ function StatCard({ label, value, color, icon }: { label: string; value: number 
     teal:   { bg: 'bg-gradient-to-br from-teal-50 to-teal-100/60 border-teal-200/60',       iconBg: 'bg-teal-100',   text: 'text-teal-700' },
     blue:   { bg: 'bg-gradient-to-br from-blue-50 to-blue-100/60 border-blue-200/60',       iconBg: 'bg-blue-100',   text: 'text-blue-700' },
     amber:  { bg: 'bg-gradient-to-br from-amber-50 to-amber-100/60 border-amber-200/60',    iconBg: 'bg-amber-100',  text: 'text-amber-700' },
+    green:  { bg: 'bg-gradient-to-br from-green-50 to-green-100/60 border-green-200/60',    iconBg: 'bg-green-100',  text: 'text-green-700' },
   };
   const s = styles[color];
   return (
@@ -548,6 +571,21 @@ function AlertIcon() {
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
       <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
       <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+    </svg>
+  );
+}
+function BoxIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+      <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
+      <polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
+    </svg>
+  );
+}
+function ValueIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+      <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
     </svg>
   );
 }

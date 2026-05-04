@@ -1,12 +1,13 @@
 export interface ColumnMap {
-  item_key:      string | null;
-  item_name:     string | null;
-  location_code: string | null;   // short code, e.g. WH001
-  warehouse:     string | null;   // full name, e.g. "Scope Logistics | BHIWANDI"
-  quantity:      string | null;
-  uom:           string | null;
-  cas_number:    string | null;
-  uom_options:   string | null;
+  item_key:        string | null;
+  item_name:       string | null;
+  location_code:   string | null;   // short code, e.g. WH001
+  warehouse:       string | null;   // full name, e.g. "Scope Logistics | BHIWANDI"
+  quantity:        string | null;
+  inventory_value: string | null;
+  uom:             string | null;
+  cas_number:      string | null;
+  uom_options:     string | null;
 }
 
 export interface MappingResult {
@@ -24,12 +25,10 @@ const ALIASES: Record<keyof ColumnMap, string[]> = {
     'item_name','item name','name','description','product name','material name',
     'chemical name','chemical','substance','product description','itemkeydesc',
   ],
-  // Short warehouse code detected before full name so it wins the "location" column
   location_code: [
     'location','loc','location_code','loc_code','wh_code','wh code',
     'warehouse_code','warehouse code','site_code','site code',
   ],
-  // Full warehouse name / description
   warehouse: [
     'warehouse','warehouse_name','warehouse name','locationdesc','location_desc',
     'location desc','location name','wh_name','wh name','site','plant','facility',
@@ -37,7 +36,6 @@ const ALIASES: Record<keyof ColumnMap, string[]> = {
   quantity: [
     'quantity','qty','stock','available','available qty','count',
     'stock qty','on hand','balance','lotqtyonhand',
-    // Common ERP / Indian inventory column names
     'closing stock','closing qty','closing quantity','closing balance',
     'current stock','current qty','current quantity',
     'opening stock','opening qty','opening balance',
@@ -47,6 +45,12 @@ const ALIASES: Record<keyof ColumnMap, string[]> = {
     'available quantity','available stock','available balance',
     'book stock','book qty','system stock','system qty',
     'on hand qty','onhand','on hand quantity','quantity on hand',
+  ],
+  inventory_value: [
+    'inventory_value','inventory value','extendedcost','extended cost',
+    'value','total value','stock value','cost value','item value',
+    'valuation','stock valuation','inventory cost','total cost',
+    'amount','total amount','net value','gross value',
   ],
   uom:         ['uom','unit','unit of measure','units','measure','stockuomcode'],
   cas_number:  ['cas','cas_number','cas number','cas no','cas#'],
@@ -61,7 +65,8 @@ export function detectColumns(rawHeaders: string[], sampleRows?: Record<string, 
   const warnings: string[] = [];
   const columnMap: ColumnMap = {
     item_key: null, item_name: null, location_code: null,
-    warehouse: null, quantity: null, uom: null, cas_number: null, uom_options: null,
+    warehouse: null, quantity: null, inventory_value: null,
+    uom: null, cas_number: null, uom_options: null,
   };
 
   const used = new Set<string>();

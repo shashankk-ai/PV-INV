@@ -38,6 +38,7 @@ interface MappedRecord {
   location_code: string | null;
   warehouse_name: string | null;
   quantity: number;
+  inventory_value: number;
   uom: string;
   cas_number?: string;
   uom_options: string[];
@@ -61,6 +62,11 @@ function applyMap(rows: Record<string, unknown>[], map: ColumnMap): MappedRecord
       const rawQty = map.quantity ? row[map.quantity] : undefined;
       const quantity = parseQty(rawQty);
 
+      const rawVal = map.inventory_value ? row[map.inventory_value] : undefined;
+      const inventory_value = rawVal !== undefined && rawVal !== ''
+        ? parseFloat(String(rawVal).replace(/,/g, '')) || 0
+        : 0;
+
       const uom = map.uom ? String(row[map.uom] ?? '').trim() || 'units' : 'units';
 
       const location_code  = map.location_code ? String(row[map.location_code] ?? '').trim() || null : null;
@@ -73,7 +79,7 @@ function applyMap(rows: Record<string, unknown>[], map: ColumnMap): MappedRecord
         ? rawUomOpts.split(/[,;|]/).map((s) => s.trim()).filter(Boolean)
         : [uom];
 
-      return { item_key, item_name, location_code, warehouse_name, quantity, uom, cas_number, uom_options };
+      return { item_key, item_name, location_code, warehouse_name, quantity, inventory_value, uom, cas_number, uom_options };
     })
     .filter((r): r is MappedRecord => r !== null);
 }
@@ -174,7 +180,7 @@ router.post(
       // so we SUM quantities across all lots for the same item+warehouse.
       const aggregated = new Map<string, {
         item_key: string; item_name: string; warehouse_id: string;
-        quantity: number; uom: string; uom_options: string[];
+        quantity: number; inventory_value: number; uom: string; uom_options: string[];
       }>();
 
       for (const rec of records) {
@@ -185,12 +191,14 @@ router.post(
           const existing = aggregated.get(key);
           if (existing) {
             existing.quantity += rec.quantity;
+            existing.inventory_value += rec.inventory_value;
           } else {
             aggregated.set(key, {
               item_key: rec.item_key,
               item_name: rec.item_name,
               warehouse_id: targetWh.id,
               quantity: rec.quantity,
+              inventory_value: rec.inventory_value,
               uom: rec.uom,
               uom_options: rec.uom_options,
             });

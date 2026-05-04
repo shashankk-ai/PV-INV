@@ -23,6 +23,7 @@ router.get('/stats', requireAuth, requireAdmin, async (_req: Request, res: Respo
       unlistedItems,
       totalEntries,
       warehouses,
+      inventoryAgg,
     ] = await Promise.all([
       prisma.pvSession.count({ where: { started_at: { gte: todayStart } } }),
       prisma.pvEntry.count({ where: { created_at: { gte: todayStart }, deleted_at: null } }),
@@ -34,6 +35,9 @@ router.get('/stats', requireAuth, requireAdmin, async (_req: Request, res: Respo
       prisma.unlistedItem.count({ where: { created_at: { gte: todayStart } } }),
       prisma.pvEntry.count({ where: { deleted_at: null } }),
       prisma.warehouse.count(),
+      prisma.systemInventoryCache.aggregate({
+        _sum: { quantity: true, inventory_value: true },
+      }),
     ]);
 
     ok(res, {
@@ -43,6 +47,8 @@ router.get('/stats', requireAuth, requireAdmin, async (_req: Request, res: Respo
       unlisted_items: unlistedItems,
       total_entries: totalEntries,
       warehouses,
+      total_system_qty: inventoryAgg._sum.quantity ?? 0,
+      total_inventory_value: inventoryAgg._sum.inventory_value ?? 0,
     });
   } catch (err) {
     next(err);
