@@ -286,7 +286,12 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
             render={({ field }) => (
               <ItemCombobox
                 value={field.value ?? ''}
-                onChange={field.onChange}
+                onChange={(name) => {
+                  field.onChange(name);
+                  // Mirror typed name → item_key so form is always submittable.
+                  // onSelect() will overwrite this with the real key when user picks from dropdown.
+                  setValue('item_key', name, { shouldValidate: false });
+                }}
                 onSelect={(chem) => { field.onChange(chem.item_name); handleItemSelect(chem); }}
                 error={errors.item_name?.message ?? errors.item_key?.message}
                 placeholder="Search chemical name..."
@@ -307,12 +312,11 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
 
         {/* Item Key */}
         <div>
-          <label className="block text-sm font-medium text-navy mb-1.5">Item Key</label>
+          <label className="block text-sm font-medium text-navy mb-1.5">Item Key <span className="text-xs font-normal text-gray-400">(auto-filled)</span></label>
           <input
             {...register('item_key')}
             type="text"
-            readOnly
-            className="input-field bg-gray-100 text-gray-500 font-mono cursor-not-allowed"
+            className="input-field font-mono text-gray-600 bg-gray-50"
             placeholder="Auto-filled on item selection"
           />
         </div>
