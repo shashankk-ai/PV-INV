@@ -1,3 +1,5 @@
+import { useState, useEffect } from 'react';
+
 interface Props {
   value: number;
   onChange: (n: number) => void;
@@ -8,8 +10,21 @@ interface Props {
 }
 
 export default function Stepper({ value, onChange, min = 1, max = 9999, label, error }: Props) {
+  const [raw, setRaw] = useState(String(value));
+
+  useEffect(() => { setRaw(String(value)); }, [value]);
+
   const dec = () => onChange(Math.max(min, value - 1));
   const inc = () => onChange(Math.min(max, value + 1));
+
+  const commit = (str: string) => {
+    const n = parseInt(str, 10);
+    if (!isNaN(n) && n >= min) {
+      onChange(Math.min(max, Math.max(min, n)));
+    } else {
+      setRaw(String(value)); // reset to last valid
+    }
+  };
 
   return (
     <div>
@@ -25,14 +40,12 @@ export default function Stepper({ value, onChange, min = 1, max = 9999, label, e
           −
         </button>
         <input
-          type="number"
-          value={value}
-          min={min}
-          max={max}
-          onChange={(e) => {
-            const n = parseInt(e.target.value, 10);
-            if (!isNaN(n)) onChange(Math.min(max, Math.max(min, n)));
-          }}
+          inputMode="numeric"
+          pattern="[0-9]*"
+          value={raw}
+          onChange={(e) => setRaw(e.target.value)}
+          onBlur={(e) => commit(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') commit(raw); }}
           className="flex-1 text-center text-xl font-bold text-navy h-12 border-none outline-none bg-white"
         />
         <button

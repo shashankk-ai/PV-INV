@@ -1,12 +1,13 @@
 export interface ColumnMap {
-  item_key:      string | null;
-  item_name:     string | null;
-  location_code: string | null;   // short code, e.g. WH001
-  warehouse:     string | null;   // full name, e.g. "Scope Logistics | BHIWANDI"
-  quantity:      string | null;
-  uom:           string | null;
-  cas_number:    string | null;
-  uom_options:   string | null;
+  item_key:        string | null;
+  item_name:       string | null;
+  location_code:   string | null;   // short code, e.g. WH001
+  warehouse:       string | null;   // full name, e.g. "Scope Logistics | BHIWANDI"
+  quantity:        string | null;
+  inventory_value: string | null;
+  uom:             string | null;
+  cas_number:      string | null;
+  uom_options:     string | null;
 }
 
 export interface MappingResult {
@@ -24,12 +25,10 @@ const ALIASES: Record<keyof ColumnMap, string[]> = {
     'item_name','item name','name','description','product name','material name',
     'chemical name','chemical','substance','product description','itemkeydesc',
   ],
-  // Short warehouse code detected before full name so it wins the "location" column
   location_code: [
     'location','loc','location_code','loc_code','wh_code','wh code',
     'warehouse_code','warehouse code','site_code','site code',
   ],
-  // Full warehouse name / description
   warehouse: [
     'warehouse','warehouse_name','warehouse name','locationdesc','location_desc',
     'location desc','location name','wh_name','wh name','site','plant','facility',
@@ -37,6 +36,21 @@ const ALIASES: Record<keyof ColumnMap, string[]> = {
   quantity: [
     'quantity','qty','stock','available','available qty','count',
     'stock qty','on hand','balance','lotqtyonhand',
+    'closing stock','closing qty','closing quantity','closing balance',
+    'current stock','current qty','current quantity',
+    'opening stock','opening qty','opening balance',
+    'free stock','net stock','net qty','net quantity',
+    'inventory qty','inventory quantity','physical qty','physical quantity',
+    'total qty','total quantity','total stock',
+    'available quantity','available stock','available balance',
+    'book stock','book qty','system stock','system qty',
+    'on hand qty','onhand','on hand quantity','quantity on hand',
+  ],
+  inventory_value: [
+    'inventory_value','inventory value','extendedcost','extended cost',
+    'value','total value','stock value','cost value','item value',
+    'valuation','stock valuation','inventory cost','total cost',
+    'amount','total amount','net value','gross value',
   ],
   uom:         ['uom','unit','unit of measure','units','measure','stockuomcode'],
   cas_number:  ['cas','cas_number','cas number','cas no','cas#'],
@@ -47,11 +61,12 @@ function normalize(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-export function detectColumns(rawHeaders: string[]): MappingResult {
+export function detectColumns(rawHeaders: string[], sampleRows?: Record<string, unknown>[]): MappingResult {
   const warnings: string[] = [];
   const columnMap: ColumnMap = {
     item_key: null, item_name: null, location_code: null,
-    warehouse: null, quantity: null, uom: null, cas_number: null, uom_options: null,
+    warehouse: null, quantity: null, inventory_value: null,
+    uom: null, cas_number: null, uom_options: null,
   };
 
   const used = new Set<string>();
@@ -83,13 +98,33 @@ export function detectColumns(rawHeaders: string[]): MappingResult {
     }
   }
 
+  // Third pass: if quantity still undetected, find any unmapped column with mostly numeric values
+  if (!columnMap.quantity && sampleRows?.length) {
+    for (const raw of rawHeaders) {
+      if (used.has(raw)) continue;
+      const vals = sampleRows
+        .map((r) => r[raw])
+        .filter((v) => v !== '' && v !== null && v !== undefined);
+      if (!vals.length) continue;
+      const numericCount = vals.filter((v) => {
+        const cleaned = String(v).replace(/,/g, '').trim();
+        return cleaned !== '' && !isNaN(Number(cleaned));
+      }).length;
+      if (numericCount / vals.length >= 0.8) {
+        columnMap.quantity = raw;
+        used.add(raw);
+        break;
+      }
+    }
+  }
+
   const required: (keyof ColumnMap)[] = ['item_key', 'item_name'];
   const found = required.filter((f) => columnMap[f] !== null).length;
   const confidence = found / required.length;
 
   if (!columnMap.item_key)  warnings.push('Could not detect item key column — please set manually');
   if (!columnMap.item_name) warnings.push('Could not detect item name column — please set manually');
-  if (!columnMap.quantity)  warnings.push('No quantity column found — system quantities will be 0');
+  if (!columnMap.quantity)  warnings.push('No quantity column found — please select manually');
   if (!columnMap.location_code && !columnMap.warehouse)
     warnings.push('No warehouse column — all rows applied to every warehouse');
 

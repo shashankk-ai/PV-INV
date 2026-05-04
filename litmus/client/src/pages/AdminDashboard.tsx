@@ -27,6 +27,7 @@ interface Warehouse {
   id: string;
   name: string;
   location_code: string;
+  _count: { system_inventory: number };
 }
 
 interface AdminUser {
@@ -47,6 +48,7 @@ export default function AdminDashboard() {
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>('overview');
   const [showAddUser, setShowAddUser] = useState(false);
+  const [warehouseSearch, setWarehouseSearch] = useState('');
 
   const { data: statsData } = useQuery({
     queryKey: ['admin-stats'],
@@ -161,7 +163,21 @@ export default function AdminDashboard() {
 
             {/* Truth Reports */}
             <section>
-              <h2 className="section-title">Truth Reports</h2>
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="section-title mb-0">Truth Reports</h2>
+              </div>
+              {warehouses.length > 0 && (
+                <div className="relative mb-2">
+                  <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <input
+                    type="text"
+                    placeholder="Search warehouse by name or code…"
+                    value={warehouseSearch}
+                    onChange={(e) => setWarehouseSearch(e.target.value)}
+                    className="input-field pl-9 text-sm py-2"
+                  />
+                </div>
+              )}
               <div className="flex flex-col gap-2">
                 {warehouses.length === 0 ? (
                   <div className="card p-4 flex items-center gap-3">
@@ -171,7 +187,17 @@ export default function AdminDashboard() {
                       <div className="h-2.5 bg-gray-100 rounded animate-pulse w-1/3" />
                     </div>
                   </div>
-                ) : warehouses.map((wh) => (
+                ) : warehouses.filter((w) => w._count.system_inventory > 0).length === 0 ? (
+                  <div className="card p-4 text-center text-sm text-gray-400">
+                    No inventory uploaded yet — go to Data tab to upload your file
+                  </div>
+                ) : warehouses.filter((wh) =>
+                    wh._count.system_inventory > 0 && (
+                      !warehouseSearch ||
+                      wh.name.toLowerCase().includes(warehouseSearch.toLowerCase()) ||
+                      wh.location_code.toLowerCase().includes(warehouseSearch.toLowerCase())
+                    )
+                  ).map((wh) => (
                   <button
                     key={wh.id}
                     onClick={() => navigate(`/admin/truth/${wh.id}`)}
@@ -301,14 +327,21 @@ function AddUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
   const [role, setRole] = useState<'ops' | 'admin'>('ops');
   const [error, setError] = useState('');
 
-  const canSubmit = username.trim().length >= 3 && email.trim().includes('@') && password.length >= 8;
+  const usernameValid = /^[a-z0-9_]{3,32}$/.test(username);
+  const canSubmit = usernameValid && email.trim().includes('@') && password.length >= 8;
 
   const mutation = useMutation({
     mutationFn: () => api.post('/admin/users', { username, email, password, role }),
-    onSuccess: () => { toast.success(`User "${username}" created — welcome email sent`); onCreated(); },
+    onSuccess: () => { toast.success(`User "${username}" created`); onCreated(); },
     onError: (e: unknown) => {
-      const msg = (e as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? 'Could not create user';
-      setError(msg);
+      const err = e as { response?: { data?: { error?: { message?: string; details?: Record<string, string[]> } } } };
+      const details = err?.response?.data?.error?.details;
+      if (details) {
+        const msgs = Object.values(details).flat().join(' · ');
+        setError(msgs || 'Check your input');
+      } else {
+        setError(err?.response?.data?.error?.message ?? 'Could not create user — try again');
+      }
     },
   });
 
@@ -326,12 +359,16 @@ function AddUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Username</label>
             <input
-              className="input-field"
+              className={`input-field ${username && !usernameValid ? 'border-red-400 ring-1 ring-red-400' : ''}`}
               placeholder="e.g. john_ops"
               value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              onChange={(e) => setUsername(e.target.value.toLowerCase())}
               autoCapitalize="none"
             />
+            <p className="text-xs text-gray-400 mt-1">Lowercase letters, numbers and _ only (e.g. <span className="font-mono">ram_ops</span>)</p>
+            {username && !usernameValid && (
+              <p className="text-xs text-red-500 mt-0.5">Use only lowercase letters, numbers and underscore (_)</p>
+            )}
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
@@ -409,6 +446,7 @@ function StatCard({ label, value, color, icon }: { label: string; value: number 
     teal:   { bg: 'bg-gradient-to-br from-teal-50 to-teal-100/60 border-teal-200/60',       iconBg: 'bg-teal-100',   text: 'text-teal-700' },
     blue:   { bg: 'bg-gradient-to-br from-blue-50 to-blue-100/60 border-blue-200/60',       iconBg: 'bg-blue-100',   text: 'text-blue-700' },
     amber:  { bg: 'bg-gradient-to-br from-amber-50 to-amber-100/60 border-amber-200/60',    iconBg: 'bg-amber-100',  text: 'text-amber-700' },
+    green:  { bg: 'bg-gradient-to-br from-green-50 to-green-100/60 border-green-200/60',    iconBg: 'bg-green-100',  text: 'text-green-700' },
   };
   const s = styles[color];
   return (
@@ -427,6 +465,13 @@ function formatTime(iso: string) {
 }
 
 /* --- Icons --- */
+function SearchIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+      <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  );
+}
 function ChevronRightIcon() {
   return (
     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round">

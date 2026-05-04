@@ -38,9 +38,18 @@ interface MappedRecord {
   location_code: string | null;
   warehouse_name: string | null;
   quantity: number;
+  inventory_value: number;
   uom: string;
   cas_number?: string;
   uom_options: string[];
+}
+
+function parseQty(raw: unknown): number {
+  if (raw === undefined || raw === null || raw === '') return 0;
+  if (typeof raw === 'number') return Math.round(raw);
+  const cleaned = String(raw).replace(/,/g, '').replace(/[^\d.\-]/g, '').trim();
+  const n = parseFloat(cleaned);
+  return isNaN(n) ? 0 : Math.round(n);
 }
 
 function applyMap(rows: Record<string, unknown>[], map: ColumnMap): MappedRecord[] {
@@ -51,7 +60,12 @@ function applyMap(rows: Record<string, unknown>[], map: ColumnMap): MappedRecord
       if (!item_key || !item_name) return null;
 
       const rawQty = map.quantity ? row[map.quantity] : undefined;
-      const quantity = rawQty !== undefined && rawQty !== '' ? Math.round(Number(rawQty)) : 0;
+      const quantity = parseQty(rawQty);
+
+      const rawVal = map.inventory_value ? row[map.inventory_value] : undefined;
+      const inventory_value = rawVal !== undefined && rawVal !== ''
+        ? parseFloat(String(rawVal).replace(/,/g, '')) || 0
+        : 0;
 
       const uom = map.uom ? String(row[map.uom] ?? '').trim() || 'units' : 'units';
 
@@ -65,7 +79,7 @@ function applyMap(rows: Record<string, unknown>[], map: ColumnMap): MappedRecord
         ? rawUomOpts.split(/[,;|]/).map((s) => s.trim()).filter(Boolean)
         : [uom];
 
-      return { item_key, item_name, location_code, warehouse_name, quantity, uom, cas_number, uom_options };
+      return { item_key, item_name, location_code, warehouse_name, quantity, inventory_value, uom, cas_number, uom_options };
     })
     .filter((r): r is MappedRecord => r !== null);
 }
@@ -83,7 +97,7 @@ router.post(
       if (!rows.length) throw AppError.badRequest('File is empty or could not be parsed');
 
       const headers = Object.keys(rows[0]);
-      const { columnMap, confidence, warnings } = detectColumns(headers);
+      const { columnMap, confidence, warnings } = detectColumns(headers, rows.slice(0, 10));
 
       ok(res, { headers, detected: columnMap, confidence, warnings, sample: rows.slice(0, 5), total_rows: rows.length });
     } catch (err) {
@@ -108,7 +122,7 @@ router.post(
       } else {
         const rows0 = parseFile(req.file.buffer);
         if (!rows0.length) throw AppError.badRequest('File is empty');
-        columnMap = detectColumns(Object.keys(rows0[0])).columnMap;
+        columnMap = detectColumns(Object.keys(rows0[0]), rows0.slice(0, 10)).columnMap;
       }
 
       if (!columnMap.item_key || !columnMap.item_name) {
@@ -162,26 +176,37 @@ router.post(
       };
 
       // ── 5. Bulk-replace system inventory ──────────────────────────────────
-      // Build all records in memory, then delete + createMany in one transaction
-      const inventoryRows: {
+      // Aggregate by item_key+warehouse_id — files often have one row per lot,
+      // so we SUM quantities across all lots for the same item+warehouse.
+      const aggregated = new Map<string, {
         item_key: string; item_name: string; warehouse_id: string;
-        quantity: number; uom: string; uom_options: string[];
-      }[] = [];
+        quantity: number; inventory_value: number; uom: string; uom_options: string[];
+      }>();
 
       for (const rec of records) {
         const wh = resolveWarehouse(rec);
         const targets = wh ? [wh] : dbWarehouses;
         for (const targetWh of targets) {
-          inventoryRows.push({
-            item_key: rec.item_key,
-            item_name: rec.item_name,
-            warehouse_id: targetWh.id,
-            quantity: rec.quantity,
-            uom: rec.uom,
-            uom_options: rec.uom_options,
-          });
+          const key = `${rec.item_key}::${targetWh.id}`;
+          const existing = aggregated.get(key);
+          if (existing) {
+            existing.quantity += rec.quantity;
+            existing.inventory_value += rec.inventory_value;
+          } else {
+            aggregated.set(key, {
+              item_key: rec.item_key,
+              item_name: rec.item_name,
+              warehouse_id: targetWh.id,
+              quantity: rec.quantity,
+              inventory_value: rec.inventory_value,
+              uom: rec.uom,
+              uom_options: rec.uom_options,
+            });
+          }
         }
       }
+
+      const inventoryRows = [...aggregated.values()];
 
       const warehouseIds = dbWarehouses.map((w) => w.id);
       await prisma.$transaction([

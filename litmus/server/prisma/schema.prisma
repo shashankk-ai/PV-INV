@@ -102,8 +102,11 @@ model PvPhoto {
 model UnlistedItem {
   id           String   @id @default(uuid())
   session_id   String
+  warehouse_id String   @default("")
   item_name    String
   description  String?
+  units        Int      @default(1)
+  packing_size Int      @default(1)
   quantity     Int
   uom          String
   packing_type String
@@ -114,19 +117,21 @@ model UnlistedItem {
   user User @relation(fields: [created_by], references: [id])
 
   @@index([session_id])
+  @@index([warehouse_id])
   @@index([created_by])
   @@map("unlisted_items")
 }
 
 model SystemInventoryCache {
-  id           String   @id @default(uuid())
-  item_key     String
-  item_name    String
-  warehouse_id String
-  quantity     Int
-  uom          String
-  uom_options  String[]
-  synced_at    DateTime @default(now())
+  id              String   @id @default(uuid())
+  item_key        String
+  item_name       String
+  warehouse_id    String
+  quantity        Int
+  inventory_value Float    @default(0)
+  uom             String
+  uom_options     String[]
+  synced_at       DateTime @default(now())
 
   warehouse Warehouse @relation(fields: [warehouse_id], references: [id])
 
@@ -150,6 +155,24 @@ model DataUpload {
 
   @@index([uploaded_by])
   @@map("data_uploads")
+}
+
+model ScanAuditLog {
+  id           String   @id @default(uuid())
+  entry_id     String   // intentionally no FK — audit survives entry deletion
+  session_id   String
+  warehouse_id String
+  action       String   // "CREATE" | "UPDATE" | "DELETE"
+  actor_id     String
+  actor_name   String
+  snapshot     Json     // full entry state at the moment of action
+  created_at   DateTime @default(now())
+
+  @@index([entry_id])
+  @@index([session_id])
+  @@index([warehouse_id])
+  @@index([created_at])
+  @@map("scan_audit_log")
 }
 
 model RefreshToken {

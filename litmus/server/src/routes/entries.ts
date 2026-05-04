@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/auth';
 import { validate } from '../middleware/validate';
@@ -114,29 +115,46 @@ router.post(
         },
       });
 
-      const entry = await prisma.pvEntry.create({
-        data: {
-          session_id: sessionId,
-          rack_number: body.rack_number,
-          item_name: body.item_name,
-          item_key: body.item_key,
-          batch_number: body.batch_number,
-          units: body.units,
-          packing_size: body.packing_size,
-          uom: body.uom,
-          packing_type: body.packing_type,
-          total_quantity: totalQuantity,
-          mfg_date: mfgDate,
-          expiry_date: expDate,
-          is_potential_duplicate: !!dupCheck,
-          idempotency_key: body.idempotency_key ?? null,
-          created_by: userId,
-        },
-        include: {
-          photos: { select: { id: true, url: true, thumb_url: true } },
-          user: { select: { username: true } },
-        },
-      });
+      const entryId = randomUUID();
+      // pvEntryData must NOT include warehouse_id — that's not a PvEntry field
+      const pvEntryData = {
+        session_id: sessionId,
+        rack_number: body.rack_number,
+        item_name: body.item_name,
+        item_key: body.item_key,
+        batch_number: body.batch_number,
+        units: body.units,
+        packing_size: body.packing_size,
+        uom: body.uom,
+        packing_type: body.packing_type,
+        total_quantity: totalQuantity,
+        mfg_date: mfgDate,
+        expiry_date: expDate,
+        is_potential_duplicate: !!dupCheck,
+        idempotency_key: body.idempotency_key ?? null,
+        created_by: userId,
+      };
+
+      const [entry] = await prisma.$transaction([
+        prisma.pvEntry.create({
+          data: { id: entryId, ...pvEntryData },
+          include: {
+            photos: { select: { id: true, url: true, thumb_url: true } },
+            user: { select: { username: true } },
+          },
+        }),
+        prisma.scanAuditLog.create({
+          data: {
+            entry_id: entryId,
+            session_id: sessionId,
+            warehouse_id: session.warehouse_id,
+            action: 'CREATE',
+            actor_id: userId,
+            actor_name: res.locals.user.username,
+            snapshot: { ...pvEntryData, warehouse_id: session.warehouse_id } as object,
+          },
+        }),
+      ]);
 
       created(res, entry);
     } catch (err) {
@@ -177,26 +195,43 @@ router.put(
       const units = body.units ?? entry.units;
       const packingSize = body.packing_size ?? entry.packing_size;
 
-      const updated = await prisma.pvEntry.update({
-        where: { id: entryId },
-        data: {
-          ...(body.rack_number && { rack_number: body.rack_number }),
-          ...(body.item_name && { item_name: body.item_name }),
-          ...(body.item_key && { item_key: body.item_key }),
-          ...(body.batch_number && { batch_number: body.batch_number }),
-          ...(body.units !== undefined && { units: body.units }),
-          ...(body.packing_size !== undefined && { packing_size: body.packing_size }),
-          ...(body.uom && { uom: body.uom }),
-          ...(body.packing_type && { packing_type: body.packing_type }),
-          ...(body.mfg_date && { mfg_date: new Date(body.mfg_date) }),
-          ...(body.expiry_date && { expiry_date: new Date(body.expiry_date) }),
-          total_quantity: units * packingSize,
-        },
-        include: {
-          photos: { select: { id: true, url: true, thumb_url: true } },
-          user: { select: { username: true } },
-        },
-      });
+      const updateData = {
+        ...(body.rack_number && { rack_number: body.rack_number }),
+        ...(body.item_name && { item_name: body.item_name }),
+        ...(body.item_key && { item_key: body.item_key }),
+        ...(body.batch_number && { batch_number: body.batch_number }),
+        ...(body.units !== undefined && { units: body.units }),
+        ...(body.packing_size !== undefined && { packing_size: body.packing_size }),
+        ...(body.uom && { uom: body.uom }),
+        ...(body.packing_type && { packing_type: body.packing_type }),
+        ...(body.mfg_date && { mfg_date: new Date(body.mfg_date) }),
+        ...(body.expiry_date && { expiry_date: new Date(body.expiry_date) }),
+        total_quantity: units * packingSize,
+      };
+
+      const session = await prisma.pvSession.findUnique({ where: { id: sessionId }, select: { warehouse_id: true } });
+
+      const [updated] = await prisma.$transaction([
+        prisma.pvEntry.update({
+          where: { id: entryId },
+          data: updateData,
+          include: {
+            photos: { select: { id: true, url: true, thumb_url: true } },
+            user: { select: { username: true } },
+          },
+        }),
+        prisma.scanAuditLog.create({
+          data: {
+            entry_id: entryId,
+            session_id: sessionId,
+            warehouse_id: session?.warehouse_id ?? '',
+            action: 'UPDATE',
+            actor_id: userId,
+            actor_name: res.locals.user.username,
+            snapshot: { before: entry, changes: updateData } as object,
+          },
+        }),
+      ]);
 
       ok(res, updated);
     } catch (err) {
@@ -221,10 +256,25 @@ router.delete(
       if (!entry) throw AppError.notFound('Entry not found');
       if (role !== 'admin' && entry.created_by !== userId) throw AppError.forbidden();
 
-      await prisma.pvEntry.update({
-        where: { id: entryId },
-        data: { deleted_at: new Date() },
-      });
+      const delSession = await prisma.pvSession.findUnique({ where: { id: sessionId }, select: { warehouse_id: true } });
+
+      await prisma.$transaction([
+        prisma.pvEntry.update({
+          where: { id: entryId },
+          data: { deleted_at: new Date() },
+        }),
+        prisma.scanAuditLog.create({
+          data: {
+            entry_id: entryId,
+            session_id: sessionId,
+            warehouse_id: delSession?.warehouse_id ?? '',
+            action: 'DELETE',
+            actor_id: userId,
+            actor_name: res.locals.user.username,
+            snapshot: entry as object,
+          },
+        }),
+      ]);
 
       ok(res, { deleted: true });
     } catch (err) {

@@ -4,13 +4,15 @@ import api from '../lib/axios';
 import toast from 'react-hot-toast';
 
 interface ColumnMap {
-  item_key:    string | null;
-  item_name:   string | null;
-  warehouse:   string | null;
-  quantity:    string | null;
-  uom:         string | null;
-  cas_number:  string | null;
-  uom_options: string | null;
+  item_key:        string | null;
+  item_name:       string | null;
+  location_code:   string | null;
+  warehouse:       string | null;
+  quantity:        string | null;
+  inventory_value: string | null;
+  uom:             string | null;
+  cas_number:      string | null;
+  uom_options:     string | null;
 }
 
 interface PreviewResult {
@@ -38,13 +40,15 @@ interface Warehouse {
 }
 
 const FIELD_LABELS: Record<keyof ColumnMap, string> = {
-  item_key:    'Item Key / SKU',
-  item_name:   'Item Name',
-  warehouse:   'Warehouse',
-  quantity:    'Quantity',
-  uom:         'Unit of Measure',
-  cas_number:  'CAS Number',
-  uom_options: 'UOM Options',
+  item_key:        'Item Key / SKU',
+  item_name:       'Item Name',
+  location_code:   'Location Code',
+  warehouse:       'Warehouse',
+  quantity:        'Quantity',
+  inventory_value: 'Inventory Value (₹)',
+  uom:             'Unit of Measure',
+  cas_number:      'CAS Number',
+  uom_options:     'UOM Options',
 };
 
 const REQUIRED_FIELDS: (keyof ColumnMap)[] = ['item_key', 'item_name'];
@@ -189,6 +193,16 @@ export default function DataUploadPage() {
             <span>{preview.confidence >= 1 ? '✓ All required columns detected' : `⚠ ${preview.warnings.join(' · ')}`}</span>
           </div>
 
+          {/* Quantity not mapped warning */}
+          {!columnMap.quantity && (
+            <div className="bg-amber-50 border border-amber-300 rounded-xl px-3 py-2.5 mb-3 flex items-start gap-2">
+              <span className="text-amber-500 text-base leading-tight flex-shrink-0">⚠</span>
+              <p className="text-xs text-amber-800 leading-snug">
+                <strong>Quantity column not auto-detected.</strong> Please select the correct column from the <strong>Quantity</strong> dropdown below — quantities will be 0 if left unmapped.
+              </p>
+            </div>
+          )}
+
           {/* Column mapping selectors */}
           <div className="card p-4 space-y-3 mb-3">
             <p className="text-xs font-semibold text-navy uppercase tracking-wide mb-1">Column Mapping</p>
@@ -197,12 +211,17 @@ export default function DataUploadPage() {
                 <span className="text-xs text-gray-600 w-28 flex-shrink-0">
                   {FIELD_LABELS[field]}
                   {REQUIRED_FIELDS.includes(field) && <span className="text-red-500 ml-0.5">*</span>}
+                  {field === 'quantity' && !columnMap[field] && <span className="text-amber-500 ml-0.5">⚠</span>}
                 </span>
                 <select
                   value={columnMap[field] ?? ''}
                   onChange={(e) => setColumnMap({ ...columnMap, [field]: e.target.value || null })}
                   className={`input-field text-xs py-1.5 flex-1 min-w-0 ${
-                    REQUIRED_FIELDS.includes(field) && !columnMap[field] ? 'border-red-400 ring-1 ring-red-400' : ''
+                    REQUIRED_FIELDS.includes(field) && !columnMap[field]
+                      ? 'border-red-400 ring-1 ring-red-400'
+                      : field === 'quantity' && !columnMap[field]
+                      ? 'border-amber-400 ring-1 ring-amber-300'
+                      : ''
                   }`}
                 >
                   <option value="">— not mapped —</option>

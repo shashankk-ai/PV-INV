@@ -180,7 +180,7 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
       return;
     }
 
-    const idempotencyKey = editEntry?.id ? undefined : crypto.randomUUID();
+    const idempotencyKey = editEntry?.id ? undefined : generateUUID();
     try {
       if (editEntry?.id) {
         await api.put(`/sessions/${session.id}/entries/${editEntry.id}`, data);
@@ -231,7 +231,7 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
   if (!site) return null;
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col pb-32">
+    <div className="min-h-screen bg-gray-50 flex flex-col pb-20">
       {/* Header */}
       <header className="nav-bar sticky top-0 z-20">
         <div>
@@ -264,7 +264,7 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
       <OfflineBanner />
 
       {/* Form */}
-      <form onSubmit={handleSubmit(onSubmit)} className="flex-1 px-4 py-4 max-w-lg mx-auto w-full space-y-5">
+      <form onSubmit={handleSubmit(onSubmit, () => toast.error('Please fill all required fields'))} className="flex-1 px-4 py-4 max-w-lg mx-auto w-full space-y-5">
         {/* Rack Number */}
         <div>
           <label className="block text-sm font-medium text-navy mb-1.5">Rack Number</label>
@@ -286,7 +286,12 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
             render={({ field }) => (
               <ItemCombobox
                 value={field.value ?? ''}
-                onChange={field.onChange}
+                onChange={(name) => {
+                  field.onChange(name);
+                  // Mirror typed name → item_key so form is always submittable.
+                  // onSelect() will overwrite this with the real key when user picks from dropdown.
+                  setValue('item_key', name, { shouldValidate: false });
+                }}
                 onSelect={(chem) => { field.onChange(chem.item_name); handleItemSelect(chem); }}
                 error={errors.item_name?.message ?? errors.item_key?.message}
                 placeholder="Search chemical name..."
@@ -307,12 +312,11 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
 
         {/* Item Key */}
         <div>
-          <label className="block text-sm font-medium text-navy mb-1.5">Item Key</label>
+          <label className="block text-sm font-medium text-navy mb-1.5">Item Key <span className="text-xs font-normal text-gray-400">(auto-filled)</span></label>
           <input
             {...register('item_key')}
             type="text"
-            readOnly
-            className="input-field bg-gray-100 text-gray-500 font-mono cursor-not-allowed"
+            className="input-field font-mono text-gray-600 bg-gray-50"
             placeholder="Auto-filled on item selection"
           />
         </div>
@@ -393,26 +397,33 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
         {/* Photo Strip */}
         <PhotoStrip photos={photos} onAdd={handlePhotoAdd} onRemove={handlePhotoRemove} />
 
-        <div className="h-4" />
-      </form>
-
-      {/* Fixed bottom submit */}
-      <div className="fixed bottom-16 left-0 right-0 px-4 pb-2 bg-gradient-to-t from-gray-50 to-transparent z-10">
+        {/* Submit button — inside form, no z-index/positioning issues on mobile */}
         <button
           type="submit"
           disabled={isSubmitting}
-          onClick={handleSubmit(onSubmit)}
-          className="btn-primary h-[52px]"
+          className="btn-primary h-[52px] w-full mt-2"
         >
           {isSubmitting ? (
             <span className="flex items-center gap-2"><Spinner /> Saving...</span>
           ) : editEntry ? 'Update Scan' : 'Log Scan'}
         </button>
-      </div>
+        <div className="h-4" />
+      </form>
 
       <BottomNav />
     </div>
   );
+}
+
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  // Fallback for HTTP (non-secure context) where crypto.randomUUID is unavailable
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
 }
 
 function Spinner() {
