@@ -43,6 +43,14 @@ interface MappedRecord {
   uom_options: string[];
 }
 
+function parseQty(raw: unknown): number {
+  if (raw === undefined || raw === null || raw === '') return 0;
+  if (typeof raw === 'number') return Math.round(raw);
+  const cleaned = String(raw).replace(/,/g, '').replace(/[^\d.\-]/g, '').trim();
+  const n = parseFloat(cleaned);
+  return isNaN(n) ? 0 : Math.round(n);
+}
+
 function applyMap(rows: Record<string, unknown>[], map: ColumnMap): MappedRecord[] {
   return rows
     .map((row): MappedRecord | null => {
@@ -51,7 +59,7 @@ function applyMap(rows: Record<string, unknown>[], map: ColumnMap): MappedRecord
       if (!item_key || !item_name) return null;
 
       const rawQty = map.quantity ? row[map.quantity] : undefined;
-      const quantity = rawQty !== undefined && rawQty !== '' ? Math.round(Number(rawQty)) : 0;
+      const quantity = parseQty(rawQty);
 
       const uom = map.uom ? String(row[map.uom] ?? '').trim() || 'units' : 'units';
 

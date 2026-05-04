@@ -4,13 +4,14 @@ import api from '../lib/axios';
 import toast from 'react-hot-toast';
 
 interface ColumnMap {
-  item_key:    string | null;
-  item_name:   string | null;
-  warehouse:   string | null;
-  quantity:    string | null;
-  uom:         string | null;
-  cas_number:  string | null;
-  uom_options: string | null;
+  item_key:      string | null;
+  item_name:     string | null;
+  location_code: string | null;
+  warehouse:     string | null;
+  quantity:      string | null;
+  uom:           string | null;
+  cas_number:    string | null;
+  uom_options:   string | null;
 }
 
 interface PreviewResult {
@@ -38,13 +39,14 @@ interface Warehouse {
 }
 
 const FIELD_LABELS: Record<keyof ColumnMap, string> = {
-  item_key:    'Item Key / SKU',
-  item_name:   'Item Name',
-  warehouse:   'Warehouse',
-  quantity:    'Quantity',
-  uom:         'Unit of Measure',
-  cas_number:  'CAS Number',
-  uom_options: 'UOM Options',
+  item_key:      'Item Key / SKU',
+  item_name:     'Item Name',
+  location_code: 'Location Code',
+  warehouse:     'Warehouse',
+  quantity:      'Quantity',
+  uom:           'Unit of Measure',
+  cas_number:    'CAS Number',
+  uom_options:   'UOM Options',
 };
 
 const REQUIRED_FIELDS: (keyof ColumnMap)[] = ['item_key', 'item_name'];

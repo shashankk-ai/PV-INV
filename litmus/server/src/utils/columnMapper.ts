@@ -37,6 +37,16 @@ const ALIASES: Record<keyof ColumnMap, string[]> = {
   quantity: [
     'quantity','qty','stock','available','available qty','count',
     'stock qty','on hand','balance','lotqtyonhand',
+    // Common ERP / Indian inventory column names
+    'closing stock','closing qty','closing quantity','closing balance',
+    'current stock','current qty','current quantity',
+    'opening stock','opening qty','opening balance',
+    'free stock','net stock','net qty','net quantity',
+    'inventory qty','inventory quantity','physical qty','physical quantity',
+    'total qty','total quantity','total stock',
+    'available quantity','available stock','available balance',
+    'book stock','book qty','system stock','system qty',
+    'on hand qty','onhand','on hand quantity','quantity on hand',
   ],
   uom:         ['uom','unit','unit of measure','units','measure','stockuomcode'],
   cas_number:  ['cas','cas_number','cas number','cas no','cas#'],
