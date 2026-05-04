@@ -63,6 +63,7 @@ export default function TruthReportPage() {
   const navigate = useNavigate();
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [filter, setFilter] = useState<ReconciliationStatus | 'all'>('all');
+  const [search, setSearch] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ReconciliationRow | null>(null);
 
@@ -84,7 +85,14 @@ export default function TruthReportPage() {
     enabled: !!selectedItem && !!warehouseId,
   });
 
-  const rows = (data?.rows ?? []).filter((r) => filter === 'all' || r.status === filter);
+  const rows = (data?.rows ?? []).filter((r) => {
+    if (filter !== 'all' && r.status !== filter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      return r.item_name.toLowerCase().includes(q) || r.item_key.toLowerCase().includes(q);
+    }
+    return true;
+  });
 
   const handleCsvExport = async () => {
     setDownloading(true);
@@ -139,6 +147,26 @@ export default function TruthReportPage() {
           </button>
         </div>
 
+        {/* Product search */}
+        <div className="relative print:hidden">
+          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <input
+            type="text"
+            placeholder="Search product name or code…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="input-field pl-9 text-sm"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <XIcon />
+            </button>
+          )}
+        </div>
+
         {isLoading ? (
           <div className="space-y-2">
             {[1, 2, 3, 4].map((i) => <div key={i} className="card p-4 animate-pulse h-16 bg-gray-100" />)}
@@ -166,7 +194,9 @@ export default function TruthReportPage() {
             </div>
 
             {rows.length === 0 ? (
-              <div className="text-center py-12 text-gray-400 text-sm">No items match this filter.</div>
+              <div className="text-center py-12 text-gray-400 text-sm">
+                {search ? `No items match "${search}"` : 'No items match this filter.'}
+              </div>
             ) : (
               <div className="rounded-xl overflow-hidden border border-gray-200 print:border-gray-300">
                 {/* Header row */}
@@ -295,6 +325,13 @@ function SummaryPill({ label, value, color }: { label: string; value: number | s
   );
 }
 
+function SearchIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+      <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  );
+}
 function BackIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">

@@ -91,7 +91,7 @@ router.post(
       if (!rows.length) throw AppError.badRequest('File is empty or could not be parsed');
 
       const headers = Object.keys(rows[0]);
-      const { columnMap, confidence, warnings } = detectColumns(headers);
+      const { columnMap, confidence, warnings } = detectColumns(headers, rows.slice(0, 10));
 
       ok(res, { headers, detected: columnMap, confidence, warnings, sample: rows.slice(0, 5), total_rows: rows.length });
     } catch (err) {
@@ -116,7 +116,7 @@ router.post(
       } else {
         const rows0 = parseFile(req.file.buffer);
         if (!rows0.length) throw AppError.badRequest('File is empty');
-        columnMap = detectColumns(Object.keys(rows0[0])).columnMap;
+        columnMap = detectColumns(Object.keys(rows0[0]), rows0.slice(0, 10)).columnMap;
       }
 
       if (!columnMap.item_key || !columnMap.item_name) {

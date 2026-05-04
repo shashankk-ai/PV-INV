@@ -57,7 +57,7 @@ function normalize(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-export function detectColumns(rawHeaders: string[]): MappingResult {
+export function detectColumns(rawHeaders: string[], sampleRows?: Record<string, unknown>[]): MappingResult {
   const warnings: string[] = [];
   const columnMap: ColumnMap = {
     item_key: null, item_name: null, location_code: null,
@@ -93,13 +93,33 @@ export function detectColumns(rawHeaders: string[]): MappingResult {
     }
   }
 
+  // Third pass: if quantity still undetected, find any unmapped column with mostly numeric values
+  if (!columnMap.quantity && sampleRows?.length) {
+    for (const raw of rawHeaders) {
+      if (used.has(raw)) continue;
+      const vals = sampleRows
+        .map((r) => r[raw])
+        .filter((v) => v !== '' && v !== null && v !== undefined);
+      if (!vals.length) continue;
+      const numericCount = vals.filter((v) => {
+        const cleaned = String(v).replace(/,/g, '').trim();
+        return cleaned !== '' && !isNaN(Number(cleaned));
+      }).length;
+      if (numericCount / vals.length >= 0.8) {
+        columnMap.quantity = raw;
+        used.add(raw);
+        break;
+      }
+    }
+  }
+
   const required: (keyof ColumnMap)[] = ['item_key', 'item_name'];
   const found = required.filter((f) => columnMap[f] !== null).length;
   const confidence = found / required.length;
 
   if (!columnMap.item_key)  warnings.push('Could not detect item key column — please set manually');
   if (!columnMap.item_name) warnings.push('Could not detect item name column — please set manually');
-  if (!columnMap.quantity)  warnings.push('No quantity column found — system quantities will be 0');
+  if (!columnMap.quantity)  warnings.push('No quantity column found — please select manually');
   if (!columnMap.location_code && !columnMap.warehouse)
     warnings.push('No warehouse column — all rows applied to every warehouse');
 
