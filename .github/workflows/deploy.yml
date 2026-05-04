@@ -104,6 +104,17 @@ jobs:
             ENVEOF
             echo ".env written: $(wc -l < /opt/litmus/.env) lines"
 
+            echo "=== Port 80 check ==="
+            sudo ss -tlnp | grep ':80 ' || echo "Port 80 is free"
+
+            echo "=== Server startup test (captures crash reason) ==="
+            timeout 8 sudo docker run --rm \
+              --network host \
+              --env-file /opt/litmus/.env \
+              $IMAGE 2>&1 || true
+            echo "=== End startup test ==="
+            sleep 2
+
             echo "=== Prisma DB push ==="
             sudo docker run --rm --network host --env-file /opt/litmus/.env $IMAGE \
               sh -c "npx prisma db push --schema=server/prisma/schema.prisma --accept-data-loss --skip-generate 2>&1"
