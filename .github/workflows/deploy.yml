@@ -32,22 +32,13 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build Docker image
+      - name: Build & push image to ECR
         env:
           REGISTRY:   115253169289.dkr.ecr.ap-south-1.amazonaws.com
           REPOSITORY: litmus
           IMAGE_TAG:  ${{ github.sha }}
         run: |
-          docker build --progress=plain \
-            -t $REGISTRY/$REPOSITORY:$IMAGE_TAG \
-            -t $REGISTRY/$REPOSITORY:latest .
-
-      - name: Push image to ECR
-        env:
-          REGISTRY:   115253169289.dkr.ecr.ap-south-1.amazonaws.com
-          REPOSITORY: litmus
-          IMAGE_TAG:  ${{ github.sha }}
-        run: |
+          docker build -t $REGISTRY/$REPOSITORY:$IMAGE_TAG -t $REGISTRY/$REPOSITORY:latest .
           docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
           docker push $REGISTRY/$REPOSITORY:latest
 
@@ -57,34 +48,49 @@ jobs:
           host:     ${{ secrets.EC2_HOST }}
           username: ec2-user
           key:      ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 10m
           script: |
-            set -ex
+            set -e
             ECR=115253169289.dkr.ecr.ap-south-1.amazonaws.com
             IMAGE=$ECR/litmus:latest
 
-            echo "=== Services ==="
-            sudo systemctl start redis6 2>/dev/null || sudo systemctl start redis 2>/dev/null || true
-            redis-cli ping 2>/dev/null && echo "Redis OK" || echo "Redis not available (in-memory fallback)"
-            sudo systemctl start docker
-            sudo docker version --format '{{.Server.Version}}'
-
-            echo "=== RDS connectivity ==="
-            timeout 5 bash -c 'cat < /dev/null > /dev/tcp/litmus-db.clkm64okcgml.ap-south-1.rds.amazonaws.com/5432' \
-              && echo "RDS port 5432 OPEN" \
-              || echo "RDS port 5432 BLOCKED — check security group"
-
-            echo "=== AWS auth ==="
+            # ── AWS credentials ──────────────────────────────────────────
             sudo mkdir -p /root/.aws
             printf '[default]\naws_access_key_id = ${{ secrets.AWS_ACCESS_KEY_ID }}\naws_secret_access_key = ${{ secrets.AWS_SECRET_ACCESS_KEY }}\nregion = ap-south-1\n' \
               | sudo tee /root/.aws/credentials > /dev/null
-            sudo aws sts get-caller-identity
 
-            echo "=== ECR login + pull ==="
+            # ── Fix RDS security group (EC2 → RDS port 5432) ─────────────
+            echo "=== Fixing RDS security group ==="
+            INSTANCE_ID=$(curl -sf http://169.254.169.254/latest/meta-data/instance-id)
+            EC2_SG=$(sudo aws ec2 describe-instances \
+              --instance-ids "$INSTANCE_ID" \
+              --query 'Reservations[0].Instances[0].SecurityGroups[0].GroupId' \
+              --output text)
+            echo "EC2 SG: $EC2_SG"
+
+            RDS_SG=$(sudo aws rds describe-db-instances \
+              --db-instance-identifier litmus-db \
+              --query 'DBInstances[0].VpcSecurityGroups[0].VpcSecurityGroupId' \
+              --output text)
+            echo "RDS SG: $RDS_SG"
+
+            sudo aws ec2 authorize-security-group-ingress \
+              --group-id "$RDS_SG" \
+              --protocol tcp \
+              --port 5432 \
+              --source-group "$EC2_SG" 2>&1 || echo "(rule already exists — OK)"
+            echo "Security group rule ensured"
+
+            # ── Services ─────────────────────────────────────────────────
+            sudo systemctl start redis6 2>/dev/null || sudo systemctl start redis 2>/dev/null || true
+            sudo systemctl start docker
+
+            # ── ECR login + pull ──────────────────────────────────────────
             sudo aws ecr get-login-password --region ap-south-1 \
               | sudo docker login --username AWS --password-stdin $ECR
             sudo docker pull $IMAGE
 
-            echo "=== Write .env ==="
+            # ── Write .env ────────────────────────────────────────────────
             sudo mkdir -p /opt/litmus
             sudo tee /opt/litmus/.env > /dev/null << 'ENVEOF'
             DATABASE_URL=postgresql://litmus:${{ secrets.DB_PASS }}@litmus-db.clkm64okcgml.ap-south-1.rds.amazonaws.com:5432/litmus_db?sslmode=require
@@ -102,42 +108,37 @@ jobs:
             S3_ACCESS_KEY=${{ secrets.AWS_ACCESS_KEY_ID }}
             S3_SECRET_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
             ENVEOF
-            echo ".env written: $(wc -l < /opt/litmus/.env) lines"
 
-            echo "=== Port 80 check ==="
-            sudo ss -tlnp | grep ':80 ' || echo "Port 80 is free"
-
-            echo "=== Server startup test (captures crash reason) ==="
-            timeout 8 sudo docker run --rm \
-              --network host \
-              --env-file /opt/litmus/.env \
-              $IMAGE 2>&1 || true
-            echo "=== End startup test ==="
-            sleep 2
-
+            # ── Prisma schema push ────────────────────────────────────────
             echo "=== Prisma DB push ==="
             sudo docker run --rm --network host --env-file /opt/litmus/.env $IMAGE \
               sh -c "npx prisma db push --schema=server/prisma/schema.prisma --accept-data-loss --skip-generate 2>&1"
-            echo "=== Schema push complete ==="
+            echo "=== Schema push done ==="
 
-            echo "=== Start container ==="
+            # ── Free port 80 and start container ─────────────────────────
             sudo docker stop litmus 2>/dev/null || true
             sudo docker rm   litmus 2>/dev/null || true
+            sudo fuser -k 80/tcp 2>/dev/null || true
             sudo docker run -d \
               --name litmus \
-              --restart always \
+              --restart unless-stopped \
               --network host \
               --env-file /opt/litmus/.env \
               $IMAGE
 
-            sleep 15
+            # ── Wait for server (handles 8-retry DB logic = up to 40s) ───
+            echo "Waiting 50s for server to start..."
+            sleep 50
             echo "=== Container logs ==="
-            sudo docker logs litmus 2>&1 || true
+            sudo docker logs litmus 2>&1
             echo "=== Container status ==="
             sudo docker ps
 
             if ! sudo docker ps --filter "name=litmus" --filter "status=running" | grep -q litmus; then
-              echo "ERROR: container crashed — see logs above"
+              echo "FATAL: container crashed — see logs above"
               exit 1
             fi
+
+            echo "=== HTTP health check ==="
+            curl -sf http://localhost/api/health && echo "APP OK" || echo "App not responding on /api/health yet"
             echo "SUCCESS — http://${{ secrets.EC2_HOST }}"

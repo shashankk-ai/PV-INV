@@ -73,9 +73,22 @@ app.use((_req, res) => {
 
 app.use(errorHandler);
 
+async function connectDBWithRetry(maxAttempts = 8): Promise<void> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await connectDB();
+      return;
+    } catch (err) {
+      logger.warn({ attempt, maxAttempts }, `DB connect attempt ${attempt}/${maxAttempts} failed — retrying in 5s`);
+      if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 5_000));
+      else throw err;
+    }
+  }
+}
+
 async function start() {
   try {
-    await connectDB();
+    await connectDBWithRetry();
     await connectRedis();
     // Initial sync on startup (non-blocking)
     dataSyncService.syncAll().then(() => dataSyncService.startCron()).catch((e) =>
