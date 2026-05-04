@@ -397,7 +397,7 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
       </form>
 
       {/* Fixed bottom submit */}
-      <div className="fixed bottom-16 left-0 right-0 px-4 pb-2 bg-gradient-to-t from-gray-50 to-transparent z-10">
+      <div className="fixed bottom-[64px] left-0 right-0 px-4 pb-2 bg-gradient-to-t from-gray-50 to-transparent z-40">
         <button
           type="submit"
           disabled={isSubmitting}
