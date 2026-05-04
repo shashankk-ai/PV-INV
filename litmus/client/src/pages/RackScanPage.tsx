@@ -180,7 +180,7 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
       return;
     }
 
-    const idempotencyKey = editEntry?.id ? undefined : crypto.randomUUID();
+    const idempotencyKey = editEntry?.id ? undefined : generateUUID();
     try {
       if (editEntry?.id) {
         await api.put(`/sessions/${session.id}/entries/${editEntry.id}`, data);
@@ -413,6 +413,17 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
       <BottomNav />
     </div>
   );
+}
+
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  // Fallback for HTTP (non-secure context) where crypto.randomUUID is unavailable
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
 }
 
 function Spinner() {

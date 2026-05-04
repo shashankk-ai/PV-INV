@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/auth';
 import { validate } from '../middleware/validate';
@@ -114,7 +115,7 @@ router.post(
         },
       });
 
-      const entryId = crypto.randomUUID();
+      const entryId = randomUUID();
       // pvEntryData must NOT include warehouse_id — that's not a PvEntry field
       const pvEntryData = {
         session_id: sessionId,
