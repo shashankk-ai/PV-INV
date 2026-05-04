@@ -79,22 +79,11 @@ router.get('/', requireAuth, async (req: Request, res: Response, next: NextFunct
       where = { session_id };
     } else if (warehouse_id) {
       if (date) {
-        // Filter by sessions started on that date
         const base = new Date(date);
         base.setHours(0, 0, 0, 0);
         const end = new Date(base);
         end.setDate(end.getDate() + 1);
-
-        const sessions = await prisma.pvSession.findMany({
-          where: { warehouse_id, started_at: { gte: base, lt: end } },
-          select: { id: true },
-        });
-        const sessionIds = sessions.map((s) => s.id);
-
-        // Also support the denormalized warehouse_id column directly
-        where = sessionIds.length
-          ? { OR: [{ warehouse_id }, { session_id: { in: sessionIds } }] }
-          : { warehouse_id };
+        where = { warehouse_id, created_at: { gte: base, lt: end } };
       } else {
         where = { warehouse_id };
       }
@@ -140,15 +129,7 @@ router.get('/export/csv', requireAuth, requireAdmin, async (req: Request, res: R
     const end = new Date(base);
     end.setDate(end.getDate() + 1);
 
-    const sessions = await prisma.pvSession.findMany({
-      where: { warehouse_id, started_at: { gte: base, lt: end } },
-      select: { id: true },
-    });
-    const sessionIds = sessions.map((s) => s.id);
-
-    const where = sessionIds.length
-      ? { OR: [{ warehouse_id }, { session_id: { in: sessionIds } }] }
-      : { warehouse_id };
+    const where = { warehouse_id, created_at: { gte: base, lt: end } };
 
     const items = await prisma.unlistedItem.findMany({
       where,

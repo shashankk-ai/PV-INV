@@ -83,6 +83,7 @@ export default function TruthReportPage() {
   const [filter, setFilter] = useState<ReconciliationStatus | 'all'>('all');
   const [recoSearch, setRecoSearch] = useState('');
   const [pvSearch, setPvSearch] = useState('');
+  const [unlistedSearch, setUnlistedSearch] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ReconciliationRow | null>(null);
 
@@ -147,6 +148,18 @@ export default function TruthReportPage() {
     // Sort racks naturally
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }));
   }, [allScans, pvSearch]);
+
+  const filteredUnlisted = useMemo(() => {
+    if (!unlistedItems) return [];
+    if (!unlistedSearch) return unlistedItems;
+    const q = unlistedSearch.toLowerCase();
+    return unlistedItems.filter(
+      (i) =>
+        i.item_name.toLowerCase().includes(q) ||
+        (i.description ?? '').toLowerCase().includes(q) ||
+        (i.notes ?? '').toLowerCase().includes(q)
+    );
+  }, [unlistedItems, unlistedSearch]);
 
   // --- Export handlers ---
   const handleRecoCsvExport = async () => {
@@ -236,17 +249,23 @@ export default function TruthReportPage() {
       {/* ── Tab bar ── */}
       <div className="bg-white border-b border-gray-200 flex print:hidden sticky top-[64px] z-10 shadow-sm">
         {([
-          { key: 'reco',     label: 'Reco Data',       accent: 'border-[#4B3B8C] text-[#4B3B8C]' },
-          { key: 'pv',       label: 'PV Data',         accent: 'border-teal-500 text-teal-600' },
-          { key: 'unlisted', label: 'Unlisted Items',  accent: 'border-amber-500 text-amber-600' },
-        ] as { key: View; label: string; accent: string }[]).map(({ key, label, accent }) => (
+          { key: 'reco',     label: 'Reco Data',      count: data?.rows.length,        accent: 'border-[#4B3B8C] text-[#4B3B8C]' },
+          { key: 'pv',       label: 'PV Data',        count: allScans?.length,         accent: 'border-teal-500 text-teal-600' },
+          { key: 'unlisted', label: 'Unlisted',       count: unlistedItems?.length,    accent: 'border-amber-500 text-amber-600' },
+        ] as { key: View; label: string; count: number | undefined; accent: string }[]).map(({ key, label, count, accent }) => (
           <button
             key={key}
             onClick={() => setView(key)}
-            className={`flex-1 py-3 text-xs font-semibold border-b-2 transition-colors
+            className={`flex-1 py-3 text-xs font-semibold border-b-2 transition-colors flex flex-col items-center gap-0.5
               ${view === key ? accent : 'border-transparent text-gray-400 hover:text-gray-600'}`}
           >
             {label}
+            {count !== undefined && (
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none
+                ${view === key ? 'bg-current/10 opacity-80' : 'bg-gray-100 text-gray-400'}`}>
+                {count}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -458,6 +477,24 @@ export default function TruthReportPage() {
       ══════════════════════════════════════ */}
       {view === 'unlisted' && (
         <div className="px-4 py-4 max-w-2xl mx-auto w-full space-y-4">
+          {/* Search */}
+          <div className="relative">
+            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <input
+              type="text"
+              placeholder="Search item name or notes…"
+              value={unlistedSearch}
+              onChange={(e) => setUnlistedSearch(e.target.value)}
+              className="input-field pl-9 text-sm"
+            />
+            {unlistedSearch && (
+              <button onClick={() => setUnlistedSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                <XIcon />
+              </button>
+            )}
+          </div>
+
           {unlistedLoading ? (
             <div className="space-y-2">{[1,2,3].map((i) => <div key={i} className="h-24 bg-white rounded-xl animate-pulse" />)}</div>
           ) : !unlistedItems?.length ? (
@@ -465,14 +502,16 @@ export default function TruthReportPage() {
               <p className="text-4xl mb-3">📋</p>
               <p className="font-medium">No unlisted items for {date}</p>
             </div>
+          ) : filteredUnlisted.length === 0 ? (
+            <div className="text-center py-12 text-gray-400 text-sm">No items match "{unlistedSearch}"</div>
           ) : (
             <>
               <p className="text-xs text-gray-400 font-medium">
-                {unlistedItems.length} item{unlistedItems.length !== 1 ? 's' : ''} · Total Qty:{' '}
-                <strong className="text-navy">{unlistedItems.reduce((s, e) => s + e.quantity, 0).toLocaleString('en-IN')}</strong>
+                {filteredUnlisted.length}{filteredUnlisted.length !== unlistedItems.length ? ` of ${unlistedItems.length}` : ''} item{filteredUnlisted.length !== 1 ? 's' : ''} · Total Qty:{' '}
+                <strong className="text-navy">{filteredUnlisted.reduce((s, e) => s + e.quantity, 0).toLocaleString('en-IN')}</strong>
               </p>
               <div className="space-y-2">
-                {unlistedItems.map((item) => (
+                {filteredUnlisted.map((item) => (
                   <div key={item.id} className="bg-white rounded-xl px-4 py-3 border border-amber-200">
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex-1 min-w-0 pr-2">
