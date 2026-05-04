@@ -143,6 +143,18 @@ export class DataSyncService {
     );
   }
 
+  async getTotalItemCount(): Promise<number> {
+    const raw = await redis.get(ITEMS_KEY);
+    if (raw) {
+      const zohoCount = (JSON.parse(raw) as ZohoChemical[]).length;
+      if (zohoCount > 0) return zohoCount;
+    }
+    return prisma.systemInventoryCache
+      .groupBy({ by: ['item_key'] })
+      .then((rows) => rows.length)
+      .catch(() => 0);
+  }
+
   async getWarehouses(): Promise<unknown[]> {
     const raw = await redis.get(WAREHOUSES_KEY);
     if (!raw) {

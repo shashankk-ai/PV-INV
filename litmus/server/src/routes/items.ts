@@ -10,10 +10,14 @@ router.get('/items', requireAuth, async (req: Request, res: Response, next: Next
   try {
     const search = req.query.search as string | undefined;
     const start = Date.now();
-    const items = await dataSyncService.getItems(search);
+    const [items, totalCount] = await Promise.all([
+      dataSyncService.getItems(search),
+      dataSyncService.getTotalItemCount(),
+    ]);
     const stale = await dataSyncService.isStale();
     if (stale) res.setHeader('X-Data-Stale', 'true');
     res.setHeader('X-Response-Time', `${Date.now() - start}ms`);
+    res.setHeader('X-Total-Items', String(totalCount));
     ok(res, items);
   } catch (err) {
     next(err);

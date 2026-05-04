@@ -19,11 +19,11 @@ export default function ItemCombobox({ value, onChange, onSelect, error, placeho
   const [results, setResults] = useState<Chemical[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [totalItems, setTotalItems] = useState<number | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const search = useCallback((q: string) => {
-    // Cancel any previous in-flight request so stale results never overwrite fresh ones
     abortRef.current?.abort();
 
     if (!q.trim()) {
@@ -41,11 +41,12 @@ export default function ItemCombobox({ value, onChange, onSelect, error, placeho
         signal: controller.signal,
       })
       .then((r) => {
+        const count = r.headers['x-total-items'];
+        if (count !== undefined) setTotalItems(parseInt(count, 10));
         setResults(r.data.data ?? []);
         setOpen(true);
       })
       .catch((err: { name?: string; code?: string }) => {
-        // Ignore aborted requests — a newer search is already in flight
         if (err.name !== 'AbortError' && err.code !== 'ERR_CANCELED') {
           setResults([]);
         }
@@ -61,8 +62,6 @@ export default function ItemCombobox({ value, onChange, onSelect, error, placeho
     };
   }, [value, search]);
 
-  // onBlur + delay: gives the item onClick time to fire before the list disappears.
-  // This is more reliable on mobile than a document mousedown listener.
   const handleBlur = () => {
     setTimeout(() => setOpen(false), 200);
   };
@@ -76,6 +75,25 @@ export default function ItemCombobox({ value, onChange, onSelect, error, placeho
     onSelect(chem);
     setOpen(false);
     setResults([]);
+  };
+
+  const noMatchMessage = () => {
+    if (totalItems === 0 || totalItems === null && !loading) {
+      return (
+        <p className="text-sm text-gray-500">
+          No inventory loaded —{' '}
+          <span className="text-amber-600 font-semibold">ask admin to upload data</span>
+        </p>
+      );
+    }
+    return (
+      <p className="text-sm text-gray-500">
+        No match among{' '}
+        <span className="font-medium text-navy">{totalItems?.toLocaleString('en-IN')} items</span>
+        {' '}— check spelling or tap{' '}
+        <strong className="text-amber-600">Unlisted Item</strong>
+      </p>
+    );
   };
 
   return (
@@ -119,8 +137,8 @@ export default function ItemCombobox({ value, onChange, onSelect, error, placeho
       )}
 
       {open && results.length === 0 && !loading && value.trim().length > 0 && (
-        <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg px-4 py-3 text-sm text-gray-400">
-          No matches — tap <strong className="text-amber-600">Unlisted Item</strong> in the header
+        <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg px-4 py-3">
+          {noMatchMessage()}
         </div>
       )}
 
