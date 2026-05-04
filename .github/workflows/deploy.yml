@@ -30,13 +30,22 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build, tag & push image to ECR
+      - name: Build Docker image
         env:
           REGISTRY:   115253169289.dkr.ecr.ap-south-1.amazonaws.com
           REPOSITORY: litmus
           IMAGE_TAG:  ${{ github.sha }}
         run: |
-          docker build -t $REGISTRY/$REPOSITORY:$IMAGE_TAG -t $REGISTRY/$REPOSITORY:latest .
+          docker build --progress=plain \
+            -t $REGISTRY/$REPOSITORY:$IMAGE_TAG \
+            -t $REGISTRY/$REPOSITORY:latest .
+
+      - name: Push image to ECR
+        env:
+          REGISTRY:   115253169289.dkr.ecr.ap-south-1.amazonaws.com
+          REPOSITORY: litmus
+          IMAGE_TAG:  ${{ github.sha }}
+        run: |
           docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
           docker push $REGISTRY/$REPOSITORY:latest
 
@@ -47,27 +56,36 @@ jobs:
           username: ec2-user
           key:      ${{ secrets.EC2_SSH_KEY }}
           script: |
-            set -e
+            set -ex
             ECR=115253169289.dkr.ecr.ap-south-1.amazonaws.com
             IMAGE=$ECR/litmus:latest
 
-            # Ensure Redis + Docker are running
+            echo "=== Services ==="
             sudo systemctl start redis6 2>/dev/null || sudo systemctl start redis 2>/dev/null || true
+            redis-cli ping 2>/dev/null && echo "Redis OK" || echo "Redis not available (in-memory fallback)"
             sudo systemctl start docker
+            sudo docker version --format '{{.Server.Version}}'
 
-            # Write AWS credentials for root
+            echo "=== RDS connectivity ==="
+            timeout 5 bash -c 'cat < /dev/null > /dev/tcp/litmus-db.clkm64okcgml.ap-south-1.rds.amazonaws.com/5432' \
+              && echo "RDS port 5432 OPEN" \
+              || echo "RDS port 5432 BLOCKED — check security group"
+
+            echo "=== AWS auth ==="
             sudo mkdir -p /root/.aws
-            printf '[default]\naws_access_key_id = ${{ secrets.AWS_ACCESS_KEY_ID }}\naws_secret_access_key = ${{ secrets.AWS_SECRET_ACCESS_KEY }}\nregion = ap-south-1\n' | sudo tee /root/.aws/credentials > /dev/null
+            printf '[default]\naws_access_key_id = ${{ secrets.AWS_ACCESS_KEY_ID }}\naws_secret_access_key = ${{ secrets.AWS_SECRET_ACCESS_KEY }}\nregion = ap-south-1\n' \
+              | sudo tee /root/.aws/credentials > /dev/null
+            sudo aws sts get-caller-identity
 
-            # ECR login + pull
-            sudo aws ecr get-login-password --region ap-south-1 | \
-              sudo docker login --username AWS --password-stdin $ECR
+            echo "=== ECR login + pull ==="
+            sudo aws ecr get-login-password --region ap-south-1 \
+              | sudo docker login --username AWS --password-stdin $ECR
             sudo docker pull $IMAGE
 
-            # Recreate .env with all known-good values
+            echo "=== Write .env ==="
             sudo mkdir -p /opt/litmus
             sudo tee /opt/litmus/.env > /dev/null << 'ENVEOF'
-            DATABASE_URL=postgresql://litmus:${{ secrets.DB_PASS }}@litmus-db.clkm64okcgml.ap-south-1.rds.amazonaws.com:5432/litmus_db?sslmode=no-verify
+            DATABASE_URL=postgresql://litmus:${{ secrets.DB_PASS }}@litmus-db.clkm64okcgml.ap-south-1.rds.amazonaws.com:5432/litmus_db?sslmode=require
             REDIS_URL=redis://127.0.0.1:6379
             JWT_ACCESS_SECRET=${{ secrets.JWT_ACCESS_SECRET }}
             JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET }}
@@ -82,14 +100,14 @@ jobs:
             S3_ACCESS_KEY=${{ secrets.AWS_ACCESS_KEY_ID }}
             S3_SECRET_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
             ENVEOF
+            echo ".env written: $(wc -l < /opt/litmus/.env) lines"
 
-            # Run schema push (visible errors in logs)
-            echo "--- Running prisma db push ---"
+            echo "=== Prisma DB push ==="
             sudo docker run --rm --network host --env-file /opt/litmus/.env $IMAGE \
               sh -c "npx prisma db push --schema=server/prisma/schema.prisma --accept-data-loss --skip-generate 2>&1"
-            echo "--- Schema push complete ---"
+            echo "=== Schema push complete ==="
 
-            # Start app
+            echo "=== Start container ==="
             sudo docker stop litmus 2>/dev/null || true
             sudo docker rm   litmus 2>/dev/null || true
             sudo docker run -d \
@@ -99,11 +117,14 @@ jobs:
               --env-file /opt/litmus/.env \
               $IMAGE
 
-            # Verify it's still running after 10s
-            sleep 10
-            sudo docker logs litmus --tail 40
+            sleep 15
+            echo "=== Container logs ==="
+            sudo docker logs litmus 2>&1 || true
+            echo "=== Container status ==="
+            sudo docker ps
+
             if ! sudo docker ps --filter "name=litmus" --filter "status=running" | grep -q litmus; then
-              echo "ERROR: container crashed"
+              echo "ERROR: container crashed — see logs above"
               exit 1
             fi
             echo "SUCCESS — http://${{ secrets.EC2_HOST }}"
