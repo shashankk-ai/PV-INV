@@ -264,7 +264,7 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
       <OfflineBanner />
 
       {/* Form */}
-      <form onSubmit={handleSubmit(onSubmit)} className="flex-1 px-4 py-4 max-w-lg mx-auto w-full space-y-5">
+      <form onSubmit={handleSubmit(onSubmit, () => toast.error('Please fill all required fields'))} className="flex-1 px-4 py-4 max-w-lg mx-auto w-full space-y-5">
         {/* Rack Number */}
         <div>
           <label className="block text-sm font-medium text-navy mb-1.5">Rack Number</label>
@@ -396,12 +396,15 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
         <div className="h-4" />
       </form>
 
-      {/* Fixed bottom submit */}
-      <div className="fixed bottom-[64px] left-0 right-0 px-4 pb-2 bg-gradient-to-t from-gray-50 to-transparent z-40">
+      {/* Fixed bottom submit — sits above BottomNav including iPhone safe-area */}
+      <div
+        className="fixed left-0 right-0 px-4 pb-2 bg-gradient-to-t from-gray-50 to-transparent z-40"
+        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 64px)' }}
+      >
         <button
           type="submit"
           disabled={isSubmitting}
-          onClick={handleSubmit(onSubmit)}
+          onClick={() => handleSubmit(onSubmit, () => toast.error('Please fill all required fields'))()}
           className="btn-primary h-[52px]"
         >
           {isSubmitting ? (

@@ -11,7 +11,7 @@ interface ReportData {
   warehouse: Warehouse;
   date: string;
   rows: ReconciliationRow[];
-  summary: { total: number; matching: number; short: number; excess: number; missing: number; accuracy_pct: number; };
+  summary: { total: number; matching: number; short: number; excess: number; missing: number; accuracy_pct: number; total_system_qty: number; total_inventory_value: number; };
 }
 
 interface ScanEntry {
@@ -173,6 +173,24 @@ export default function TruthReportPage() {
           </div>
         ) : data ? (
           <>
+            {/* Inventory KPIs */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-xl bg-teal-50 border border-teal-100 px-3 py-2.5 text-center">
+                <p className="text-lg font-bold text-teal-700 leading-tight">
+                  {data.summary.total_system_qty.toLocaleString('en-IN')}
+                </p>
+                <p className="text-xs font-medium text-teal-600 opacity-80 mt-0.5">Total System Qty</p>
+              </div>
+              <div className="rounded-xl bg-green-50 border border-green-100 px-3 py-2.5 text-center">
+                <p className="text-lg font-bold text-green-700 leading-tight">
+                  {data.summary.total_inventory_value > 0
+                    ? `₹${(data.summary.total_inventory_value / 1_00_000).toFixed(1)}L`
+                    : '—'}
+                </p>
+                <p className="text-xs font-medium text-green-600 opacity-80 mt-0.5">Inventory Value</p>
+              </div>
+            </div>
+
             {/* Summary */}
             <div className="grid grid-cols-3 gap-2 print:grid-cols-5">
               <SummaryPill label="Accuracy" value={`${data.summary.accuracy_pct}%`} color="purple" />

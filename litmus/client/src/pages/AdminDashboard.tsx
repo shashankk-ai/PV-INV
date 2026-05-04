@@ -13,8 +13,6 @@ interface Stats {
   unlisted_items: number;
   total_entries: number;
   warehouses: number;
-  total_system_qty: number;
-  total_inventory_value: number;
 }
 
 interface AdminSession {
@@ -29,6 +27,7 @@ interface Warehouse {
   id: string;
   name: string;
   location_code: string;
+  _count: { system_inventory: number };
 }
 
 interface AdminUser {
@@ -134,26 +133,6 @@ export default function AdminDashboard() {
 
         {tab === 'overview' && (
           <>
-            {/* Inventory KPIs */}
-            <div className="grid grid-cols-2 gap-3">
-              <StatCard
-                label="Total System Qty"
-                value={stats ? stats.total_system_qty.toLocaleString('en-IN') : '—'}
-                color="teal"
-                icon={<BoxIcon />}
-              />
-              <StatCard
-                label="Inventory Value"
-                value={stats
-                  ? stats.total_inventory_value > 0
-                    ? `₹${(stats.total_inventory_value / 1_00_000).toFixed(1)}L`
-                    : '₹0'
-                  : '—'}
-                color="green"
-                icon={<ValueIcon />}
-              />
-            </div>
-
             {/* Stat Cards */}
             <div className="grid grid-cols-2 gap-3">
               <StatCard
@@ -208,10 +187,16 @@ export default function AdminDashboard() {
                       <div className="h-2.5 bg-gray-100 rounded animate-pulse w-1/3" />
                     </div>
                   </div>
+                ) : warehouses.filter((w) => w._count.system_inventory > 0).length === 0 ? (
+                  <div className="card p-4 text-center text-sm text-gray-400">
+                    No inventory uploaded yet — go to Data tab to upload your file
+                  </div>
                 ) : warehouses.filter((wh) =>
-                    !warehouseSearch ||
-                    wh.name.toLowerCase().includes(warehouseSearch.toLowerCase()) ||
-                    wh.location_code.toLowerCase().includes(warehouseSearch.toLowerCase())
+                    wh._count.system_inventory > 0 && (
+                      !warehouseSearch ||
+                      wh.name.toLowerCase().includes(warehouseSearch.toLowerCase()) ||
+                      wh.location_code.toLowerCase().includes(warehouseSearch.toLowerCase())
+                    )
                   ).map((wh) => (
                   <button
                     key={wh.id}

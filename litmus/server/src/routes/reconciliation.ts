@@ -102,7 +102,13 @@ router.get(
       if (!warehouse) throw AppError.notFound('Warehouse not found');
 
       const dateRange = buildDateRange(req.query.date as string | undefined);
-      const rows = await buildReport(warehouseId, dateRange);
+      const [rows, inventoryAgg] = await Promise.all([
+        buildReport(warehouseId, dateRange),
+        prisma.systemInventoryCache.aggregate({
+          where: { warehouse_id: warehouseId },
+          _sum: { quantity: true, inventory_value: true },
+        }),
+      ]);
 
       const summary = {
         total: rows.length,
@@ -113,6 +119,8 @@ router.get(
         accuracy_pct: rows.length
           ? Math.round((rows.filter((r) => r.status === 'matching').length / rows.length) * 100)
           : 100,
+        total_system_qty: inventoryAgg._sum.quantity ?? 0,
+        total_inventory_value: inventoryAgg._sum.inventory_value ?? 0,
       };
 
       ok(res, { warehouse, date: dateRange.gte.toISOString().slice(0, 10), rows, summary });

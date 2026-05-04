@@ -25,6 +25,7 @@ router.get('/warehouses', requireAuth, async (_req: Request, res: Response, next
     // Serve from DB (has IDs needed for sessions) enriched with cache freshness
     const warehouses = await prisma.warehouse.findMany({
       orderBy: { name: 'asc' },
+      include: { _count: { select: { system_inventory: true } } },
     });
     const stale = await dataSyncService.isStale();
     if (stale) res.setHeader('X-Data-Stale', 'true');
