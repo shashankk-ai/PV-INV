@@ -22,7 +22,7 @@ function computeStatus(systemQty: number, litmusQty: number): ReconciliationStat
   return litmusQty < systemQty ? 'short' : 'excess';
 }
 
-async function buildReport(warehouseId: string, dateRange: { gte: Date; lt: Date }): Promise<ReconciliationRow[]> {
+async function buildReport(warehouseId: string, dateRange?: { gte: Date; lt: Date }): Promise<ReconciliationRow[]> {
   const [systemCache, sessions] = await Promise.all([
     prisma.systemInventoryCache.findMany({
       where: { warehouse_id: warehouseId },
@@ -31,7 +31,7 @@ async function buildReport(warehouseId: string, dateRange: { gte: Date; lt: Date
     prisma.pvSession.findMany({
       where: {
         warehouse_id: warehouseId,
-        started_at: { gte: dateRange.gte },
+        ...(dateRange ? { started_at: { gte: dateRange.gte, lt: dateRange.lt } } : {}),
       },
       select: { id: true },
     }),
@@ -141,12 +141,13 @@ router.get(
       const warehouse = await prisma.warehouse.findUnique({ where: { id: warehouseId } });
       if (!warehouse) throw AppError.notFound('Warehouse not found');
 
-      const dateRange = buildDateRange(req.query.date as string | undefined);
+      const all = req.query.all === 'true';
+      const dateRange = all ? undefined : buildDateRange(req.query.date as string | undefined);
       const rows = await buildReport(warehouseId, dateRange);
-      const dateStr = dateRange.gte.toISOString().slice(0, 10);
+      const dateStr = all ? 'all-dates' : dateRange!.gte.toISOString().slice(0, 10);
 
       const csvRows = [
-        `LITMUS Truth Report — ${warehouse.name} — ${dateStr}`,
+        `LITMUS Truth Report — ${warehouse.name} — ${all ? 'All Dates' : dateStr}`,
         '',
         'Item Key,Item Name,System Qty,Scanned Qty,Variance,Status',
         ...rows.map((r) =>
@@ -233,11 +234,15 @@ router.get(
       const warehouse = await prisma.warehouse.findUnique({ where: { id: warehouseId } });
       if (!warehouse) throw AppError.notFound('Warehouse not found');
 
-      const dateRange = buildDateRange(req.query.date as string | undefined);
-      const dateStr = dateRange.gte.toISOString().slice(0, 10);
+      const all = req.query.all === 'true';
+      const dateRange = all ? undefined : buildDateRange(req.query.date as string | undefined);
+      const dateStr = all ? 'all-dates' : dateRange!.gte.toISOString().slice(0, 10);
 
       const sessions = await prisma.pvSession.findMany({
-        where: { warehouse_id: warehouseId, started_at: { gte: dateRange.gte } },
+        where: {
+          warehouse_id: warehouseId,
+          ...(dateRange ? { started_at: { gte: dateRange.gte, lt: dateRange.lt } } : {}),
+        },
         select: { id: true },
       });
       const sessionIds = sessions.map((s) => s.id);
@@ -251,9 +256,9 @@ router.get(
         : [];
 
       const csvRows = [
-        `LITMUS PV Scan Data — ${warehouse.name} — ${dateStr}`,
+        `LITMUS PV Scan Data — ${warehouse.name} — ${all ? 'All Dates' : dateStr}`,
         '',
-        'Item Name,Item Key,Rack Number,Batch Number,Units,Pack Size,Total Qty,UOM,Packing Type,Mfg Date,Expiry Date,Scanned By,Scanned At',
+        'Item Name,Item Key,Rack Number,Batch Number,Units,Pack Size,Total Qty,UOM,Packing Type,Packing Material Desc,Packing Remarks,Mfg Date,Expiry Date,Scanned By,Scanned At',
         ...entries.map((e) => [
           `"${e.item_name.replace(/"/g, '""')}"`,
           e.item_key,
@@ -264,6 +269,8 @@ router.get(
           e.total_quantity,
           e.uom,
           e.packing_type,
+          `"${(e.packing_material_description ?? '').replace(/"/g, '""')}"`,
+          `"${(e.packing_remarks ?? '').replace(/"/g, '""')}"`,
           e.mfg_date?.toISOString().slice(0, 10) ?? '',
           e.expiry_date?.toISOString().slice(0, 10) ?? '',
           e.user.username,

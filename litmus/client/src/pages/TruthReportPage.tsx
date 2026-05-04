@@ -149,42 +149,45 @@ export default function TruthReportPage() {
   }, [allScans, pvSearch]);
 
   // --- Export handlers ---
+  const csvDownload = async (url: string, filename: string) => {
+    const res = await api.get(url, { responseType: 'blob' });
+    const blobUrl = window.URL.createObjectURL(new Blob([res.data as BlobPart]));
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    a.click();
+    window.URL.revokeObjectURL(blobUrl);
+  };
+
+  const loc = data?.warehouse.location_code ?? 'wh';
+
   const handleRecoCsvExport = async () => {
     setDownloading(true);
-    try {
-      const res = await api.get(`/reconciliation/${warehouseId}/export/csv?date=${date}`, { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([res.data as BlobPart]));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `litmus-reco-${data?.warehouse.location_code ?? 'wh'}-${date}.csv`;
-      a.click();
-      window.URL.revokeObjectURL(url);
-    } catch { toast.error('Export failed'); }
+    try { await csvDownload(`/reconciliation/${warehouseId}/export/csv?date=${date}`, `litmus-reco-${loc}-${date}.csv`); }
+    catch { toast.error('Export failed'); }
     finally { setDownloading(false); }
+  };
+  const handleRecoAllExport = async () => {
+    try { await csvDownload(`/reconciliation/${warehouseId}/export/csv?all=true`, `litmus-reco-${loc}-all.csv`); }
+    catch { toast.error('Export failed'); }
   };
 
   const handlePvCsvExport = async () => {
-    try {
-      const res = await api.get(`/reconciliation/${warehouseId}/scans/export/csv?date=${date}`, { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([res.data as BlobPart]));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `litmus-pv-${data?.warehouse.location_code ?? 'wh'}-${date}.csv`;
-      a.click();
-      window.URL.revokeObjectURL(url);
-    } catch { toast.error('Export failed'); }
+    try { await csvDownload(`/reconciliation/${warehouseId}/scans/export/csv?date=${date}`, `litmus-pv-${loc}-${date}.csv`); }
+    catch { toast.error('Export failed'); }
+  };
+  const handlePvAllExport = async () => {
+    try { await csvDownload(`/reconciliation/${warehouseId}/scans/export/csv?all=true`, `litmus-pv-${loc}-all.csv`); }
+    catch { toast.error('Export failed'); }
   };
 
   const handleUnlistedCsvExport = async () => {
-    try {
-      const res = await api.get(`/unlisted-items/export/csv?warehouse_id=${warehouseId}&date=${date}`, { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([res.data as BlobPart]));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `litmus-unlisted-${data?.warehouse.location_code ?? 'wh'}-${date}.csv`;
-      a.click();
-      window.URL.revokeObjectURL(url);
-    } catch { toast.error('Export failed'); }
+    try { await csvDownload(`/unlisted-items/export/csv?warehouse_id=${warehouseId}&date=${date}`, `litmus-unlisted-${loc}-${date}.csv`); }
+    catch { toast.error('Export failed'); }
+  };
+  const handleUnlistedAllExport = async () => {
+    try { await csvDownload(`/unlisted-items/export/csv?warehouse_id=${warehouseId}&all=true`, `litmus-unlisted-${loc}-all.csv`); }
+    catch { toast.error('Export failed'); }
   };
 
   return (
@@ -201,28 +204,44 @@ export default function TruthReportPage() {
         </div>
         {/* View-specific actions */}
         {view === 'reco' && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <button onClick={handleRecoCsvExport} disabled={downloading || !data}
-              className="text-xs bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full font-medium transition-colors disabled:opacity-50">
+              className="text-xs bg-white/20 hover:bg-white/30 px-2.5 py-1.5 rounded-full font-medium transition-colors disabled:opacity-50">
               {downloading ? '…' : 'CSV'}
             </button>
+            <button onClick={handleRecoAllExport} disabled={!data}
+              className="text-xs bg-white/20 hover:bg-white/30 px-2.5 py-1.5 rounded-full font-medium transition-colors disabled:opacity-50">
+              All
+            </button>
             <button onClick={() => window.print()} disabled={!data}
-              className="text-xs bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full font-medium transition-colors disabled:opacity-50">
+              className="text-xs bg-white/20 hover:bg-white/30 px-2.5 py-1.5 rounded-full font-medium transition-colors disabled:opacity-50">
               Print
             </button>
           </div>
         )}
         {view === 'pv' && (
-          <button onClick={handlePvCsvExport} disabled={!allScans?.length}
-            className="text-xs bg-teal-500 hover:bg-teal-400 px-3 py-1.5 rounded-full font-medium transition-colors disabled:opacity-50">
-            Export CSV
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button onClick={handlePvCsvExport} disabled={!allScans?.length}
+              className="text-xs bg-teal-500 hover:bg-teal-400 px-2.5 py-1.5 rounded-full font-medium transition-colors disabled:opacity-50">
+              CSV
+            </button>
+            <button onClick={handlePvAllExport}
+              className="text-xs bg-teal-500 hover:bg-teal-400 px-2.5 py-1.5 rounded-full font-medium transition-colors">
+              All
+            </button>
+          </div>
         )}
         {view === 'unlisted' && (
-          <button onClick={handleUnlistedCsvExport} disabled={!unlistedItems?.length}
-            className="text-xs bg-amber-400 hover:bg-amber-300 px-3 py-1.5 rounded-full font-medium transition-colors disabled:opacity-50">
-            Export CSV
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button onClick={handleUnlistedCsvExport} disabled={!unlistedItems?.length}
+              className="text-xs bg-amber-400 hover:bg-amber-300 px-2.5 py-1.5 rounded-full font-medium transition-colors disabled:opacity-50">
+              CSV
+            </button>
+            <button onClick={handleUnlistedAllExport}
+              className="text-xs bg-amber-400 hover:bg-amber-300 px-2.5 py-1.5 rounded-full font-medium transition-colors">
+              All
+            </button>
+          </div>
         )}
       </header>
 

@@ -128,27 +128,31 @@ router.get('/', requireAuth, async (req: Request, res: Response, next: NextFunct
 // GET /api/unlisted-items/export/csv?warehouse_id=X&date=YYYY-MM-DD
 router.get('/export/csv', requireAuth, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { warehouse_id, date } = req.query as Record<string, string | undefined>;
+    const { warehouse_id, date, all } = req.query as Record<string, string | undefined>;
     if (!warehouse_id) { res.status(400).json({ error: 'warehouse_id required' }); return; }
 
     const warehouse = await prisma.warehouse.findUnique({ where: { id: warehouse_id } });
     if (!warehouse) { res.status(404).json({ error: 'Not found' }); return; }
 
-    const dateStr = date ?? new Date().toISOString().slice(0, 10);
-    const base = new Date(dateStr);
-    base.setHours(0, 0, 0, 0);
-    const end = new Date(base);
-    end.setDate(end.getDate() + 1);
+    let where: Record<string, unknown> = { warehouse_id };
+    let dateStr = 'all-dates';
 
-    const sessions = await prisma.pvSession.findMany({
-      where: { warehouse_id, started_at: { gte: base, lt: end } },
-      select: { id: true },
-    });
-    const sessionIds = sessions.map((s) => s.id);
+    if (all !== 'true' && date) {
+      dateStr = date;
+      const base = new Date(date);
+      base.setHours(0, 0, 0, 0);
+      const end = new Date(base);
+      end.setDate(end.getDate() + 1);
 
-    const where = sessionIds.length
-      ? { OR: [{ warehouse_id }, { session_id: { in: sessionIds } }] }
-      : { warehouse_id };
+      const sessions = await prisma.pvSession.findMany({
+        where: { warehouse_id, started_at: { gte: base, lt: end } },
+        select: { id: true },
+      });
+      const sessionIds = sessions.map((s) => s.id);
+      where = sessionIds.length
+        ? { OR: [{ warehouse_id }, { session_id: { in: sessionIds } }] }
+        : { warehouse_id };
+    }
 
     const items = await prisma.unlistedItem.findMany({
       where,
@@ -157,7 +161,7 @@ router.get('/export/csv', requireAuth, requireAdmin, async (req: Request, res: R
     });
 
     const csvRows = [
-      `LITMUS Unlisted Items — ${warehouse.name} — ${dateStr}`,
+      `LITMUS Unlisted Items — ${warehouse.name} — ${all === 'true' ? 'All Dates' : dateStr}`,
       '',
       'Item Name,Description,Units,Pack Size,Total Qty,UOM,Packing Type,Notes,Recorded By,Recorded At',
       ...items.map((i) => [
