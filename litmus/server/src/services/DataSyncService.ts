@@ -91,14 +91,48 @@ export class DataSyncService {
   }
 
   async getItems(search?: string): Promise<ZohoChemical[]> {
+    // Try Redis (Zoho) first
+    let zohoItems: ZohoChemical[] = [];
     const raw = await redis.get(ITEMS_KEY);
-    if (!raw) {
-      await this.syncAll();
-      const fresh = await redis.get(ITEMS_KEY);
-      if (!fresh) return [];
-      return this.filterItems(JSON.parse(fresh) as ZohoChemical[], search);
+    if (raw) {
+      zohoItems = JSON.parse(raw) as ZohoChemical[];
+    } else {
+      try {
+        await this.syncAll();
+        const fresh = await redis.get(ITEMS_KEY);
+        if (fresh) zohoItems = JSON.parse(fresh) as ZohoChemical[];
+      } catch {
+        // Zoho unavailable — fall through to DB
+      }
     }
-    return this.filterItems(JSON.parse(raw) as ZohoChemical[], search);
+
+    // Always merge with items from uploaded inventory (SystemInventoryCache)
+    // so CSV-uploaded items appear as suggestions even when Zoho is down/unconfigured
+    const dbItems = await this.getItemsFromDB();
+
+    // Merge: Zoho items take priority; DB fills in anything not in Zoho
+    const merged = new Map<string, ZohoChemical>();
+    for (const item of dbItems) merged.set(item.item_key, item);
+    for (const item of zohoItems) merged.set(item.item_key, item); // overwrite with Zoho data
+
+    return this.filterItems([...merged.values()], search);
+  }
+
+  private async getItemsFromDB(): Promise<ZohoChemical[]> {
+    const rows = await prisma.systemInventoryCache.findMany({
+      select: { item_key: true, item_name: true, uom_options: true },
+      orderBy: { item_name: 'asc' },
+    });
+    // Deduplicate by item_key (same item can exist across multiple warehouses)
+    const seen = new Set<string>();
+    const unique: ZohoChemical[] = [];
+    for (const row of rows) {
+      if (!seen.has(row.item_key)) {
+        seen.add(row.item_key);
+        unique.push({ item_key: row.item_key, item_name: row.item_name, uom_options: row.uom_options });
+      }
+    }
+    return unique;
   }
 
   private filterItems(items: ZohoChemical[], search?: string): ZohoChemical[] {
