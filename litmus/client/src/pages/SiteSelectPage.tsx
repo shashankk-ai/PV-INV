@@ -19,11 +19,13 @@ export default function SiteSelectPage() {
     queryFn: () => api.get<{ data: Warehouse[] }>('/warehouses').then((r) => r.data.data),
   });
 
-  const filtered = (data ?? []).filter(
-    (w) =>
-      w.name.toLowerCase().includes(search.toLowerCase()) ||
-      w.location_code.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = (data ?? [])
+    .filter((w) => (w._count?.system_inventory ?? 0) > 0) // only warehouses with uploaded inventory
+    .filter(
+      (w) =>
+        w.name.toLowerCase().includes(search.toLowerCase()) ||
+        w.location_code.toLowerCase().includes(search.toLowerCase())
+    );
 
   const selectSite = async (w: Warehouse) => {
     setSite(w);
@@ -94,8 +96,10 @@ export default function SiteSelectPage() {
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
             <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center text-3xl">🏭</div>
-            <p className="text-gray-500 font-medium">No sites match "{search}"</p>
-            <p className="text-gray-400 text-sm">Try a different search term</p>
+            {search
+              ? <><p className="text-gray-500 font-medium">No sites match "{search}"</p><p className="text-gray-400 text-sm">Try a different search term</p></>
+              : <><p className="text-gray-500 font-medium">No sites available</p><p className="text-gray-400 text-sm">Ask admin to upload inventory data first</p></>
+            }
           </div>
         ) : (
           <ul className="flex flex-col gap-2.5">

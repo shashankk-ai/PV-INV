@@ -16,6 +16,8 @@ interface ReportData {
 
 interface ScanEntry {
   id: string;
+  item_name: string;
+  item_key: string;
   rack_number: string;
   batch_number: string;
   units: number;
@@ -27,6 +29,7 @@ interface ScanEntry {
   expiry_date: string | null;
   scanned_by: string;
   scanned_at: string;
+  is_potential_duplicate: boolean;
 }
 
 interface ItemScans {
@@ -66,6 +69,7 @@ export default function TruthReportPage() {
   const [search, setSearch] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ReconciliationRow | null>(null);
+  const [pvView, setPvView] = useState(false);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['truth-report', warehouseId, date],
@@ -73,6 +77,25 @@ export default function TruthReportPage() {
       api.get<{ data: ReportData }>(`/reconciliation/${warehouseId}?date=${date}`).then((r) => r.data.data),
     enabled: !!warehouseId,
   });
+
+  const { data: allScans, isLoading: allScansLoading } = useQuery({
+    queryKey: ['all-scans', warehouseId, date],
+    queryFn: () =>
+      api.get<{ data: ScanEntry[] }>(`/reconciliation/${warehouseId}/scans?date=${date}`).then((r) => r.data.data),
+    enabled: !!warehouseId && pvView,
+  });
+
+  const handlePvCsvExport = async () => {
+    try {
+      const res = await api.get(`/reconciliation/${warehouseId}/scans/export/csv?date=${date}`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data as BlobPart]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `litmus-pv-${data?.warehouse.location_code ?? 'wh'}-${date}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch { toast.error('Export failed'); }
+  };
 
   const { data: itemScans, isLoading: scansLoading } = useQuery({
     queryKey: ['item-scans', warehouseId, selectedItem?.item_key, date],
@@ -120,6 +143,10 @@ export default function TruthReportPage() {
           <p className="font-bold text-base leading-tight truncate">{data?.warehouse.name ?? 'Loading…'}</p>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => setPvView(true)} disabled={!data}
+            className="text-xs bg-teal-500 hover:bg-teal-400 px-3 py-1.5 rounded-full font-medium transition-colors disabled:opacity-50">
+            PV Data
+          </button>
           <button onClick={handleCsvExport} disabled={downloading || !data}
             className="text-xs bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full font-medium transition-colors disabled:opacity-50">
             {downloading ? '…' : 'CSV'}
@@ -262,6 +289,66 @@ export default function TruthReportPage() {
           <div className="text-center py-12 text-gray-400 text-sm">Failed to load report.</div>
         )}
       </div>
+
+      {/* PV Data full-screen view */}
+      {pvView && (
+        <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col">
+          {/* Header */}
+          <header className="bg-[#4B3B8C] text-white px-4 py-4 flex items-center gap-3 sticky top-0">
+            <button onClick={() => setPvView(false)} className="text-white opacity-70 hover:opacity-100">
+              <BackIcon />
+            </button>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium opacity-70 leading-tight">PV Scan Data</p>
+              <p className="font-bold text-base leading-tight truncate">{data?.warehouse.name} · {date}</p>
+            </div>
+            <button onClick={handlePvCsvExport}
+              className="text-xs bg-teal-500 hover:bg-teal-400 px-3 py-1.5 rounded-full font-medium transition-colors">
+              Export CSV
+            </button>
+          </header>
+
+          <div className="flex-1 overflow-y-auto px-4 py-4 max-w-3xl mx-auto w-full">
+            {allScansLoading ? (
+              <div className="space-y-2">{[1,2,3,4,5].map((i) => <div key={i} className="h-24 bg-white rounded-xl animate-pulse" />)}</div>
+            ) : !allScans?.length ? (
+              <div className="text-center py-20 text-gray-400">
+                <p className="text-4xl mb-3">📋</p>
+                <p className="font-medium">No scans recorded for {date}</p>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-gray-400 mb-3 font-medium">{allScans.length} scan entries · Total Qty: <strong className="text-navy">{allScans.reduce((s, e) => s + e.total_quantity, 0).toLocaleString('en-IN')}</strong></p>
+                <div className="space-y-2">
+                  {allScans.map((scan, i) => (
+                    <div key={scan.id} className={`bg-white rounded-xl px-4 py-3 border ${scan.is_potential_duplicate ? 'border-amber-300 bg-amber-50' : 'border-gray-100'}`}>
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1 min-w-0 pr-2">
+                          <p className="font-semibold text-navy text-sm leading-tight truncate">{scan.item_name}</p>
+                          <p className="text-xs text-gray-400 font-mono">{scan.item_key}</p>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="font-bold text-teal text-sm">{scan.total_quantity} <span className="font-normal text-xs text-gray-400">{scan.uom}</span></p>
+                          {scan.is_potential_duplicate && <span className="text-xs text-amber-600 font-medium">⚠ Dup?</span>}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-500">
+                        <span>#{i+1} · Rack: <strong className="text-navy">{scan.rack_number}</strong></span>
+                        <span>Batch: <strong className="text-navy">{scan.batch_number}</strong></span>
+                        <span>Units × Pack: {scan.units} × {scan.packing_size}</span>
+                        <span>Type: {scan.packing_type}</span>
+                        {scan.mfg_date && <span>Mfg: {scan.mfg_date}</span>}
+                        {scan.expiry_date && <span>Exp: {scan.expiry_date}</span>}
+                        <span className="col-span-2 text-gray-400">By {scan.scanned_by} · {new Date(scan.scanned_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Scan drill-down bottom sheet */}
       {selectedItem && (

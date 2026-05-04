@@ -4,6 +4,7 @@ export interface Warehouse {
   id: string;
   name: string;
   location_code: string;
+  _count?: { system_inventory: number };
 }
 
 interface SiteContextValue {
