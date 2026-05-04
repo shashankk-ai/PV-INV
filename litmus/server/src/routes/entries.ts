@@ -23,13 +23,15 @@ const entryBaseSchema = z.object({
   packing_size:    z.number().int().positive('Packing size must be a positive integer'),
   uom:             z.string().min(1, 'UOM is required'),
   packing_type:    z.enum(PACKING_TYPES, { errorMap: () => ({ message: 'Invalid packing type' }) }),
-  mfg_date:        z.string().refine((d) => !isNaN(Date.parse(d)), 'Invalid manufacture date'),
-  expiry_date:     z.string().refine((d) => !isNaN(Date.parse(d)), 'Invalid expiry date'),
+  mfg_date:        z.string().refine((d) => !d || !isNaN(Date.parse(d)), 'Invalid manufacture date').optional().nullable(),
+  expiry_date:     z.string().refine((d) => !d || !isNaN(Date.parse(d)), 'Invalid expiry date').optional().nullable(),
+  packing_material_description: z.string().optional().nullable(),
+  packing_remarks: z.string().optional().nullable(),
   idempotency_key: z.string().uuid().optional(),
 });
 
 const entrySchema = entryBaseSchema.refine(
-  (d) => new Date(d.expiry_date) > new Date(d.mfg_date),
+  (d) => !d.expiry_date || !d.mfg_date || new Date(d.expiry_date) > new Date(d.mfg_date),
   { message: 'Expiry date must be after manufacture date', path: ['expiry_date'] }
 );
 
@@ -95,8 +97,8 @@ router.post(
       const role = res.locals.user.role;
       if (role !== 'admin' && session.user_id !== userId) throw AppError.forbidden();
 
-      const mfgDate = new Date(body.mfg_date);
-      const expDate = new Date(body.expiry_date);
+      const mfgDate = body.mfg_date ? new Date(body.mfg_date) : null;
+      const expDate = body.expiry_date ? new Date(body.expiry_date) : null;
       const totalQuantity = body.units * body.packing_size;
 
       // Duplicate detection: same item_key + rack_number in active sessions for same warehouse today
@@ -130,6 +132,8 @@ router.post(
         total_quantity: totalQuantity,
         mfg_date: mfgDate,
         expiry_date: expDate,
+        packing_material_description: body.packing_material_description ?? null,
+        packing_remarks: body.packing_remarks ?? null,
         is_potential_duplicate: !!dupCheck,
         idempotency_key: body.idempotency_key ?? null,
         created_by: userId,

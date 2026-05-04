@@ -65,8 +65,10 @@ model PvEntry {
   uom                  String
   packing_type         String
   total_quantity       Int
-  mfg_date             DateTime
-  expiry_date          DateTime
+  mfg_date             DateTime?
+  expiry_date          DateTime?
+  packing_material_description String?
+  packing_remarks      String?
   is_potential_duplicate Boolean  @default(false)
   idempotency_key      String?   @unique
   created_by           String

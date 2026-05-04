@@ -32,8 +32,20 @@ const schema = z
     packing_size: z.number().int().min(1, 'Must be ≥ 1'),
     uom:          z.string().min(1, 'UOM is required'),
     packing_type: z.enum(PACKING_TYPES, { errorMap: () => ({ message: 'Select a packing type' }) }),
-    mfg_date:     z.string().min(1, 'Manufacturing date required'),
-    expiry_date:  z.string().min(1, 'Expiry date required'),
+    mfg_date:             z.string().optional(),
+    mfg_date_missing:     z.boolean().optional(),
+    expiry_date:          z.string().optional(),
+    expiry_date_missing:  z.boolean().optional(),
+    packing_material_description: z.string().optional(),
+    packing_remarks:              z.string().optional(),
+  })
+  .refine((d) => d.mfg_date_missing || !!d.mfg_date, {
+    message: 'Manufacturing date required (or mark as missing)',
+    path: ['mfg_date'],
+  })
+  .refine((d) => d.expiry_date_missing || !!d.expiry_date, {
+    message: 'Expiry date required (or mark as missing)',
+    path: ['expiry_date'],
   })
   .refine((d) => !d.expiry_date || !d.mfg_date || new Date(d.expiry_date) > new Date(d.mfg_date), {
     message: 'Expiry must be after manufacture date',
@@ -162,11 +174,19 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
   const onSubmit = async (data: FormData) => {
     if (!session) { toast.error('No active session. Please select a site again.'); return; }
 
+    // Strip UI-only boolean flags; resolve dates to null when marked missing
+    const { mfg_date_missing, expiry_date_missing, ...rest } = data;
+    const payload = {
+      ...rest,
+      mfg_date:    mfg_date_missing    ? null : data.mfg_date,
+      expiry_date: expiry_date_missing ? null : data.expiry_date,
+    };
+
     // Offline path
     if (!isOnline) {
       await saveScanOffline(
         session.id,
-        data as unknown as Record<string, unknown>,
+        payload as unknown as Record<string, unknown>,
         photos.map((p, i) => ({ blob: p.blob, filename: `photo_${i}.jpg` }))
       );
       toast.success('Scan saved locally ✓', { icon: '📲' });
@@ -183,14 +203,14 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
     const idempotencyKey = editEntry?.id ? undefined : generateUUID();
     try {
       if (editEntry?.id) {
-        await api.put(`/sessions/${session.id}/entries/${editEntry.id}`, data);
+        await api.put(`/sessions/${session.id}/entries/${editEntry.id}`, payload);
         if (photos.length > 0) await uploadPhotos(editEntry.id, session.id);
         toast.success('Scan updated ✓');
         onSaved?.();
       } else {
         const res = await api.post<{ data: { id: string } }>(
           `/sessions/${session.id}/entries`,
-          { ...data, idempotency_key: idempotencyKey }
+          { ...payload, idempotency_key: idempotencyKey }
         );
         const entryId = res.data.data.id;
         if (photos.length > 0) await uploadPhotos(entryId, session.id);
@@ -369,6 +389,19 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
           )} />
         </div>
 
+        {/* Packing Material Description */}
+        <div>
+          <label className="block text-sm font-medium text-navy mb-1.5">
+            Packing Material Description <span className="text-gray-400 font-normal text-xs">(optional)</span>
+          </label>
+          <input
+            {...register('packing_material_description')}
+            type="text"
+            placeholder="e.g. HDPE drum, kraft paper bag"
+            className="input-field"
+          />
+        </div>
+
         {/* Total Quantity */}
         <div className="bg-teal-50 border border-teal rounded-xl px-4 py-3 flex items-center justify-between">
           <span className="text-sm text-teal font-medium">Total Quantity</span>
@@ -380,18 +413,74 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
 
         {/* Dates */}
         <div className="grid grid-cols-2 gap-4">
+          {/* Mfg Date */}
           <div>
-            <label className="block text-sm font-medium text-navy mb-1.5">Mfg Date</label>
-            <input {...register('mfg_date')} type="date"
-              className={`input-field ${errors.mfg_date ? 'border-red-400' : ''}`} />
-            {errors.mfg_date && <p className="mt-1 text-sm text-red-700">{errors.mfg_date.message}</p>}
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-sm font-medium text-navy">Mfg Date</label>
+              <label className="flex items-center gap-1 cursor-pointer">
+                <Controller name="mfg_date_missing" control={control} render={({ field }) => (
+                  <input
+                    type="checkbox"
+                    checked={!!field.value}
+                    onChange={(e) => {
+                      field.onChange(e.target.checked);
+                      if (e.target.checked) setValue('mfg_date', '');
+                    }}
+                    className="w-3.5 h-3.5 rounded accent-gray-500"
+                  />
+                )} />
+                <span className="text-xs text-gray-400">Missing</span>
+              </label>
+            </div>
+            <input
+              {...register('mfg_date')}
+              type="date"
+              disabled={!!watch('mfg_date_missing')}
+              className={`input-field ${watch('mfg_date_missing') ? 'opacity-40 bg-gray-100' : ''} ${errors.mfg_date ? 'border-red-400' : ''}`}
+            />
+            {errors.mfg_date && <p className="mt-1 text-xs text-red-700">{errors.mfg_date.message}</p>}
           </div>
+
+          {/* Expiry Date */}
           <div>
-            <label className="block text-sm font-medium text-navy mb-1.5">Expiry Date</label>
-            <input {...register('expiry_date')} type="date"
-              className={`input-field ${errors.expiry_date ? 'border-red-400' : ''}`} />
-            {errors.expiry_date && <p className="mt-1 text-sm text-red-700">{errors.expiry_date.message}</p>}
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-sm font-medium text-navy">Expiry Date</label>
+              <label className="flex items-center gap-1 cursor-pointer">
+                <Controller name="expiry_date_missing" control={control} render={({ field }) => (
+                  <input
+                    type="checkbox"
+                    checked={!!field.value}
+                    onChange={(e) => {
+                      field.onChange(e.target.checked);
+                      if (e.target.checked) setValue('expiry_date', '');
+                    }}
+                    className="w-3.5 h-3.5 rounded accent-gray-500"
+                  />
+                )} />
+                <span className="text-xs text-gray-400">Missing</span>
+              </label>
+            </div>
+            <input
+              {...register('expiry_date')}
+              type="date"
+              disabled={!!watch('expiry_date_missing')}
+              className={`input-field ${watch('expiry_date_missing') ? 'opacity-40 bg-gray-100' : ''} ${errors.expiry_date ? 'border-red-400' : ''}`}
+            />
+            {errors.expiry_date && <p className="mt-1 text-xs text-red-700">{errors.expiry_date.message}</p>}
           </div>
+        </div>
+
+        {/* Packing Remarks */}
+        <div>
+          <label className="block text-sm font-medium text-navy mb-1.5">
+            Packing Remarks <span className="text-gray-400 font-normal text-xs">(optional)</span>
+          </label>
+          <input
+            {...register('packing_remarks')}
+            type="text"
+            placeholder="Any remarks about the packing condition"
+            className="input-field"
+          />
         </div>
 
         {/* Photo Strip */}
