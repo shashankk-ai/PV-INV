@@ -32,6 +32,20 @@ interface ScanEntry {
   is_potential_duplicate: boolean;
 }
 
+interface UnlistedEntry {
+  id: string;
+  item_name: string;
+  description: string | null;
+  units: number;
+  packing_size: number;
+  quantity: number;
+  uom: string;
+  packing_type: string;
+  notes: string | null;
+  recorded_by: string;
+  created_at: string;
+}
+
 interface ItemScans {
   item_key: string;
   item_name: string;
@@ -70,6 +84,7 @@ export default function TruthReportPage() {
   const [downloading, setDownloading] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ReconciliationRow | null>(null);
   const [pvView, setPvView] = useState(false);
+  const [unlistedView, setUnlistedView] = useState(false);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['truth-report', warehouseId, date],
@@ -84,6 +99,25 @@ export default function TruthReportPage() {
       api.get<{ data: ScanEntry[] }>(`/reconciliation/${warehouseId}/scans?date=${date}`).then((r) => r.data.data),
     enabled: !!warehouseId && pvView,
   });
+
+  const { data: unlistedItems, isLoading: unlistedLoading } = useQuery({
+    queryKey: ['unlisted-items', warehouseId, date],
+    queryFn: () =>
+      api.get<{ data: UnlistedEntry[] }>(`/unlisted-items?warehouse_id=${warehouseId}&date=${date}`).then((r) => r.data.data),
+    enabled: !!warehouseId && unlistedView,
+  });
+
+  const handleUnlistedCsvExport = async () => {
+    try {
+      const res = await api.get(`/unlisted-items/export/csv?warehouse_id=${warehouseId}&date=${date}`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data as BlobPart]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `litmus-unlisted-${data?.warehouse.location_code ?? 'wh'}-${date}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch { toast.error('Export failed'); }
+  };
 
   const handlePvCsvExport = async () => {
     try {
@@ -143,6 +177,10 @@ export default function TruthReportPage() {
           <p className="font-bold text-base leading-tight truncate">{data?.warehouse.name ?? 'Loading…'}</p>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => setUnlistedView(true)} disabled={!data}
+            className="text-xs bg-amber-500 hover:bg-amber-400 px-3 py-1.5 rounded-full font-medium transition-colors disabled:opacity-50">
+            Unlisted
+          </button>
           <button onClick={() => setPvView(true)} disabled={!data}
             className="text-xs bg-teal-500 hover:bg-teal-400 px-3 py-1.5 rounded-full font-medium transition-colors disabled:opacity-50">
             PV Data
@@ -289,6 +327,64 @@ export default function TruthReportPage() {
           <div className="text-center py-12 text-gray-400 text-sm">Failed to load report.</div>
         )}
       </div>
+
+      {/* Unlisted Items full-screen view */}
+      {unlistedView && (
+        <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col">
+          <header className="bg-amber-500 text-white px-4 py-4 flex items-center gap-3 sticky top-0">
+            <button onClick={() => setUnlistedView(false)} className="text-white opacity-70 hover:opacity-100">
+              <BackIcon />
+            </button>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium opacity-70 leading-tight">Unlisted Items</p>
+              <p className="font-bold text-base leading-tight truncate">{data?.warehouse.name} · {date}</p>
+            </div>
+            <button onClick={handleUnlistedCsvExport}
+              className="text-xs bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full font-medium transition-colors">
+              Export CSV
+            </button>
+          </header>
+
+          <div className="flex-1 overflow-y-auto px-4 py-4 max-w-3xl mx-auto w-full">
+            {unlistedLoading ? (
+              <div className="space-y-2">{[1,2,3].map((i) => <div key={i} className="h-24 bg-white rounded-xl animate-pulse" />)}</div>
+            ) : !unlistedItems?.length ? (
+              <div className="text-center py-20 text-gray-400">
+                <p className="text-4xl mb-3">📋</p>
+                <p className="font-medium">No unlisted items for {date}</p>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-gray-400 mb-3 font-medium">
+                  {unlistedItems.length} unlisted item{unlistedItems.length !== 1 ? 's' : ''} · Total Qty:{' '}
+                  <strong className="text-navy">{unlistedItems.reduce((s, e) => s + e.quantity, 0).toLocaleString('en-IN')}</strong>
+                </p>
+                <div className="space-y-2">
+                  {unlistedItems.map((item) => (
+                    <div key={item.id} className="bg-white rounded-xl px-4 py-3 border border-amber-200">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1 min-w-0 pr-2">
+                          <p className="font-semibold text-navy text-sm leading-tight truncate">{item.item_name}</p>
+                          {item.description && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{item.description}</p>}
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="font-bold text-amber-600 text-sm">{item.quantity} <span className="font-normal text-xs text-gray-400">{item.uom}</span></p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-500">
+                        <span>Units × Pack: {item.units} × {item.packing_size}</span>
+                        <span>Type: {item.packing_type}</span>
+                        {item.notes && <span className="col-span-2 italic text-gray-400">{item.notes}</span>}
+                        <span className="col-span-2 text-gray-400">By {item.recorded_by} · {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* PV Data full-screen view */}
       {pvView && (

@@ -102,8 +102,11 @@ model PvPhoto {
 model UnlistedItem {
   id           String   @id @default(uuid())
   session_id   String
+  warehouse_id String   @default("")
   item_name    String
   description  String?
+  units        Int      @default(1)
+  packing_size Int      @default(1)
   quantity     Int
   uom          String
   packing_type String
@@ -114,6 +117,7 @@ model UnlistedItem {
   user User @relation(fields: [created_by], references: [id])
 
   @@index([session_id])
+  @@index([warehouse_id])
   @@index([created_by])
   @@map("unlisted_items")
 }

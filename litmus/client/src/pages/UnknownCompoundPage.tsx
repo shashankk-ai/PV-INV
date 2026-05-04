@@ -13,12 +13,13 @@ import { PackingType } from '@litmus/shared';
 const PACKING_TYPES = ['drums','bags','bottles','cans','cartons','pallets','other'] as const;
 
 const schema = z.object({
-  item_name:   z.string().min(1, 'Item name is required'),
-  description: z.string().optional(),
-  quantity:    z.number().int().min(1),
-  uom:         z.enum(['L','KG','Units','Other']),
+  item_name:    z.string().min(1, 'Item name is required'),
+  description:  z.string().optional(),
+  units:        z.number().int().min(1, 'Units must be at least 1'),
+  packing_size: z.number().int().min(1, 'Pack size must be at least 1'),
+  uom:          z.enum(['L','KG','Units','Other']),
   packing_type: z.enum(PACKING_TYPES, { errorMap: () => ({ message: 'Select a packing type' }) }),
-  notes:       z.string().optional(),
+  notes:        z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -32,16 +33,25 @@ export default function UnknownCompoundPage() {
     register,
     handleSubmit,
     control,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { quantity: 1, uom: 'L' },
+    defaultValues: { units: 1, packing_size: 1, uom: 'L' },
   });
+
+  const units = watch('units') ?? 1;
+  const packingSize = watch('packing_size') ?? 1;
+  const totalQty = units * packingSize;
 
   const onSubmit = async (data: FormData) => {
     if (!session) { toast.error('No active session'); return; }
     try {
-      await api.post('/unlisted-items', { ...data, session_id: session.id });
+      await api.post('/unlisted-items', {
+        ...data,
+        session_id:   session.id,
+        warehouse_id: site?.id ?? '',
+      });
       toast.success('Unlisted item recorded ✓');
       navigate('/scan');
     } catch {
@@ -104,15 +114,31 @@ export default function UnknownCompoundPage() {
           />
         </div>
 
-        {/* Quantity */}
-        <Controller name="quantity" control={control} render={({ field }) => (
+        {/* Units */}
+        <Controller name="units" control={control} render={({ field }) => (
           <Stepper
-            label="Quantity"
+            label="Units"
             value={field.value}
             onChange={field.onChange}
-            error={errors.quantity?.message}
+            error={errors.units?.message}
           />
         )} />
+
+        {/* Pack Size */}
+        <Controller name="packing_size" control={control} render={({ field }) => (
+          <Stepper
+            label="Pack Size"
+            value={field.value}
+            onChange={field.onChange}
+            error={errors.packing_size?.message}
+          />
+        )} />
+
+        {/* Total quantity display */}
+        <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 flex items-center justify-between">
+          <span className="text-sm font-medium text-amber-800">Total Quantity</span>
+          <span className="text-lg font-bold text-amber-700">{totalQty.toLocaleString('en-IN')}</span>
+        </div>
 
         {/* UOM */}
         <div>
@@ -155,13 +181,6 @@ export default function UnknownCompoundPage() {
                        placeholder:text-gray-400 resize-none"
           />
         </div>
-
-        {/* Camera placeholder — Phase 4 */}
-        <div className="flex justify-center">
-          <button type="button" className="w-16 h-16 rounded-full bg-[#C8A028] flex items-center justify-center shadow-md active:scale-95">
-            <CameraIcon className="w-7 h-7 text-white" />
-          </button>
-        </div>
       </form>
 
       {/* Fixed submit */}
@@ -193,15 +212,6 @@ function WarnFlaskIcon({ className }: { className?: string }) {
       <path d="M9 3h6M9 3v8l-4 9h14l-4-9V3" />
       <line x1="12" y1="12" x2="12" y2="15" />
       <circle cx="12" cy="17.5" r="0.5" fill="currentColor" />
-    </svg>
-  );
-}
-
-function CameraIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-      <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
-      <circle cx="12" cy="13" r="4" />
     </svg>
   );
 }
