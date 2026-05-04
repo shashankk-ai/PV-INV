@@ -50,7 +50,6 @@ const FIELD_LABELS: Record<keyof ColumnMap, string> = {
 };
 
 const REQUIRED_FIELDS: (keyof ColumnMap)[] = ['item_key', 'item_name'];
-const IMPORTANT_FIELDS: (keyof ColumnMap)[] = ['item_key', 'item_name', 'quantity'];
 
 export default function DataUploadPage() {
   const qc = useQueryClient();
