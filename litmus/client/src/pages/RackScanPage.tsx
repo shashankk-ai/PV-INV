@@ -228,7 +228,7 @@ export default function RackScanPage({ editEntry, onSaved }: Props) {
       if (isNetworkError && !editEntry?.id) {
         await saveScanOffline(
           session.id,
-          data as unknown as Record<string, unknown>,
+          payload as unknown as Record<string, unknown>,
           photos.map((p, i) => ({ blob: p.blob, filename: `photo_${i}.jpg` }))
         );
         toast.success('Connection lost — scan saved locally ✓', { icon: '📲' });

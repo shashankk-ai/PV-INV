@@ -48,11 +48,28 @@ interface UnlistedEntry {
   created_at: string;
 }
 
+interface ItemScan {
+  id: string;
+  rack_number: string;
+  batch_number: string;
+  units: number;
+  packing_size: number;
+  total_quantity: number;
+  uom: string;
+  packing_type: string;
+  packing_material_description: string | null;
+  packing_remarks: string | null;
+  mfg_date: string | null;
+  expiry_date: string | null;
+  scanned_by: string;
+  scanned_at: string;
+}
+
 interface ItemScans {
   item_key: string;
   item_name: string;
   total_pv_count: number;
-  scans: ScanEntry[];
+  scans: ItemScan[];
 }
 
 const STATUS_STYLES: Record<ReconciliationStatus, string> = {
@@ -445,10 +462,18 @@ export default function TruthReportPage() {
             <>
               <div className="flex items-center justify-between">
                 <p className="text-xs text-gray-400 font-medium">
-                  {pvSort === 'rack'
-                    ? `${rackGroups.length} rack${rackGroups.length !== 1 ? 's' : ''} · `
-                    : ''}{allScans.length} entries · Total Qty:{' '}
-                  <strong className="text-navy">{allScans.reduce((s, e) => s + e.total_quantity, 0).toLocaleString('en-IN')}</strong>
+                  {pvSort === 'rack' ? (
+                    <>
+                      {rackGroups.length} rack{rackGroups.length !== 1 ? 's' : ''} ·{' '}
+                      {rackGroups.reduce((s, [, sc]) => s + sc.length, 0)} entries · Total Qty:{' '}
+                      <strong className="text-navy">{rackGroups.reduce((s, [, sc]) => s + sc.reduce((a, e) => a + e.total_quantity, 0), 0).toLocaleString('en-IN')}</strong>
+                    </>
+                  ) : (
+                    <>
+                      {flatScans.length} entries · Total Qty:{' '}
+                      <strong className="text-navy">{flatScans.reduce((s, e) => s + e.total_quantity, 0).toLocaleString('en-IN')}</strong>
+                    </>
+                  )}
                 </p>
                 <div className="flex items-center gap-1">
                   <span className="text-xs text-gray-400 mr-0.5">Sort:</span>
@@ -537,7 +562,7 @@ export default function TruthReportPage() {
       )}
 
       {/* ── Item drill-down sheet (Reco tab only) ── */}
-      {selectedItem && (
+      {view === 'reco' && selectedItem && (
         <div className="fixed inset-0 z-50 flex flex-col justify-end">
           <div className="absolute inset-0 bg-black/40" onClick={() => setSelectedItem(null)} />
           <div className="relative bg-white rounded-t-2xl max-h-[80vh] flex flex-col">
@@ -578,6 +603,8 @@ export default function TruthReportPage() {
                         <span><span className="text-gray-400">Type:</span> {scan.packing_type}</span>
                         {scan.mfg_date && <span><span className="text-gray-400">Mfg:</span> {scan.mfg_date.slice(0, 10)}</span>}
                         {scan.expiry_date && <span><span className="text-gray-400">Exp:</span> {scan.expiry_date.slice(0, 10)}</span>}
+                        {scan.packing_material_description && <span className="col-span-2"><span className="text-gray-400">Material:</span> {scan.packing_material_description}</span>}
+                        {scan.packing_remarks && <span className="col-span-2 italic"><span className="text-gray-400 not-italic">Remarks:</span> {scan.packing_remarks}</span>}
                         <span className="col-span-2"><span className="text-gray-400">By:</span> {scan.scanned_by}</span>
                       </div>
                     </div>

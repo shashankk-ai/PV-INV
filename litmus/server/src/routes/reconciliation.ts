@@ -23,46 +23,36 @@ function computeStatus(systemQty: number, litmusQty: number): ReconciliationStat
 }
 
 async function buildReport(warehouseId: string, dateRange?: { gte: Date; lt: Date }): Promise<ReconciliationRow[]> {
-  const [systemCache, sessions] = await Promise.all([
+  const [systemCache, scannedAgg] = await Promise.all([
     prisma.systemInventoryCache.findMany({
       where: { warehouse_id: warehouseId },
       orderBy: { item_name: 'asc' },
     }),
-    prisma.pvSession.findMany({
+    prisma.pvEntry.groupBy({
+      by: ['item_key'],
       where: {
-        warehouse_id: warehouseId,
-        ...(dateRange ? { started_at: { gte: dateRange.gte, lt: dateRange.lt } } : {}),
+        deleted_at: null,
+        session: {
+          warehouse_id: warehouseId,
+          ...(dateRange ? { started_at: { gte: dateRange.gte, lt: dateRange.lt } } : {}),
+        },
       },
-      select: { id: true },
+      _sum: { total_quantity: true },
+      _max: { item_name: true },
     }),
   ]);
-
-  const sessionIds = sessions.map((s) => s.id);
-
-  // Aggregate scanned quantities by item_key for the date's sessions
-  const scannedAgg = sessionIds.length
-    ? await prisma.pvEntry.groupBy({
-        by: ['item_key', 'item_name'],
-        where: {
-          session_id: { in: sessionIds },
-          deleted_at: null,
-        },
-        _sum: { total_quantity: true },
-      })
-    : [];
 
   const scannedMap = new Map<string, { quantity: number; item_name: string }>();
   for (const row of scannedAgg) {
     scannedMap.set(row.item_key, {
       quantity: row._sum.total_quantity ?? 0,
-      item_name: row.item_name,
+      item_name: row._max.item_name ?? row.item_key,
     });
   }
 
-  // Build union of all item keys
   const allKeys = new Set<string>([
     ...systemCache.map((s) => s.item_key),
-    ...scannedAgg.map((s) => s.item_key),
+    ...scannedAgg.map((r) => r.item_key),
   ]);
 
   const systemMap = new Map(systemCache.map((s) => [s.item_key, s]));
@@ -296,19 +286,18 @@ router.get(
       const { warehouseId, itemKey } = req.params;
       const dateRange = buildDateRange(req.query.date as string | undefined);
 
-      const sessions = await prisma.pvSession.findMany({
-        where: { warehouse_id: warehouseId, started_at: { gte: dateRange.gte } },
-        select: { id: true },
+      const entries = await prisma.pvEntry.findMany({
+        where: {
+          deleted_at: null,
+          item_key: itemKey,
+          session: {
+            warehouse_id: warehouseId,
+            started_at: { gte: dateRange.gte, lt: dateRange.lt },
+          },
+        },
+        orderBy: { created_at: 'asc' },
+        include: { user: { select: { username: true } } },
       });
-      const sessionIds = sessions.map((s) => s.id);
-
-      const entries = sessionIds.length
-        ? await prisma.pvEntry.findMany({
-            where: { session_id: { in: sessionIds }, item_key: itemKey, deleted_at: null },
-            orderBy: { created_at: 'asc' },
-            include: { user: { select: { username: true } } },
-          })
-        : [];
 
       ok(res, {
         item_key: itemKey,
@@ -323,6 +312,8 @@ router.get(
           total_quantity: e.total_quantity,
           uom: e.uom,
           packing_type: e.packing_type,
+          packing_material_description: e.packing_material_description ?? null,
+          packing_remarks: e.packing_remarks ?? null,
           mfg_date: e.mfg_date?.toISOString().slice(0, 10) ?? null,
           expiry_date: e.expiry_date?.toISOString().slice(0, 10) ?? null,
           scanned_by: e.user.username,
