@@ -87,6 +87,7 @@ export default function TruthReportPage() {
   const [pvSearch, setPvSearch] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ReconciliationRow | null>(null);
+  const [pvSort, setPvSort] = useState<'time-asc' | 'time-desc' | 'user'>('time-asc');
 
   // --- Queries ---
   const { data, isLoading: recoLoading, refetch } = useQuery({
@@ -129,7 +130,7 @@ export default function TruthReportPage() {
     return true;
   });
 
-  // Group PV scans by rack, filtered by search
+  // Group PV scans by rack, filtered by search, sorted within each rack
   const rackGroups = useMemo(() => {
     if (!allScans) return [];
     const filtered = pvSearch
@@ -146,9 +147,17 @@ export default function TruthReportPage() {
       if (!map.has(rack)) map.set(rack, []);
       map.get(rack)!.push(scan);
     }
-    // Sort racks naturally
-    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }));
-  }, [allScans, pvSearch]);
+
+    const sortFn = (a: ScanEntry, b: ScanEntry) => {
+      if (pvSort === 'user') return a.scanned_by.localeCompare(b.scanned_by);
+      if (pvSort === 'time-desc') return new Date(b.scanned_at).getTime() - new Date(a.scanned_at).getTime();
+      return new Date(a.scanned_at).getTime() - new Date(b.scanned_at).getTime();
+    };
+
+    return [...map.entries()]
+      .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+      .map(([rack, scans]) => [rack, [...scans].sort(sortFn)] as [string, ScanEntry[]]);
+  }, [allScans, pvSearch, pvSort]);
 
   // --- Export handlers ---
   const csvDownload = async (url: string, filename: string) => {
@@ -424,10 +433,26 @@ export default function TruthReportPage() {
             <div className="text-center py-12 text-gray-400 text-sm">No scans match "{pvSearch}"</div>
           ) : (
             <>
-              <p className="text-xs text-gray-400 font-medium">
-                {rackGroups.length} rack{rackGroups.length !== 1 ? 's' : ''} · {allScans.length} entries · Total Qty:{' '}
-                <strong className="text-navy">{allScans.reduce((s, e) => s + e.total_quantity, 0).toLocaleString('en-IN')}</strong>
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-gray-400 font-medium">
+                  {rackGroups.length} rack{rackGroups.length !== 1 ? 's' : ''} · {allScans.length} entries · Total Qty:{' '}
+                  <strong className="text-navy">{allScans.reduce((s, e) => s + e.total_quantity, 0).toLocaleString('en-IN')}</strong>
+                </p>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-gray-400 mr-0.5">Sort:</span>
+                  {([
+                    { key: 'time-asc',  label: 'Time ↑' },
+                    { key: 'time-desc', label: 'Time ↓' },
+                    { key: 'user',      label: 'User' },
+                  ] as { key: typeof pvSort; label: string }[]).map(({ key, label }) => (
+                    <button key={key} onClick={() => setPvSort(key)}
+                      className={`text-xs px-2 py-1 rounded-full font-medium transition-colors
+                        ${pvSort === key ? 'bg-teal-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               <div className="space-y-4">
                 {rackGroups.map(([rack, scans]) => (
