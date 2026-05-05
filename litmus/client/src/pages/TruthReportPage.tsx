@@ -25,6 +25,8 @@ interface ScanEntry {
   total_quantity: number;
   uom: string;
   packing_type: string;
+  packing_material_description: string | null;
+  packing_remarks: string | null;
   mfg_date: string | null;
   expiry_date: string | null;
   scanned_by: string;
@@ -460,6 +462,8 @@ export default function TruthReportPage() {
                             <span>By: {scan.scanned_by} · {new Date(scan.scanned_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                             {scan.mfg_date && <span>Mfg: {scan.mfg_date}</span>}
                             {scan.expiry_date && <span>Exp: {scan.expiry_date}</span>}
+                            {scan.packing_material_description && <span className="col-span-2">Material: <strong className="text-navy">{scan.packing_material_description}</strong></span>}
+                            {scan.packing_remarks && <span className="col-span-2 italic">Remarks: {scan.packing_remarks}</span>}
                           </div>
                         </div>
                       ))}

@@ -187,7 +187,7 @@ router.get(
       const dateRange = buildDateRange(req.query.date as string | undefined);
 
       const sessions = await prisma.pvSession.findMany({
-        where: { warehouse_id: warehouseId, started_at: { gte: dateRange.gte } },
+        where: { warehouse_id: warehouseId, started_at: { gte: dateRange.gte, lt: dateRange.lt } },
         select: { id: true },
       });
       const sessionIds = sessions.map((s) => s.id);
@@ -211,6 +211,8 @@ router.get(
         total_quantity: e.total_quantity,
         uom: e.uom,
         packing_type: e.packing_type,
+        packing_material_description: e.packing_material_description ?? null,
+        packing_remarks: e.packing_remarks ?? null,
         mfg_date: e.mfg_date?.toISOString().slice(0, 10) ?? null,
         expiry_date: e.expiry_date?.toISOString().slice(0, 10) ?? null,
         scanned_by: e.user.username,
