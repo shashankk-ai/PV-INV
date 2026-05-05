@@ -87,7 +87,7 @@ export default function TruthReportPage() {
   const [pvSearch, setPvSearch] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ReconciliationRow | null>(null);
-  const [pvSort, setPvSort] = useState<'time-asc' | 'time-desc' | 'user'>('time-asc');
+  const [pvSort, setPvSort] = useState<'rack' | 'time-asc' | 'time-desc' | 'user'>('rack');
 
   // --- Queries ---
   const { data, isLoading: recoLoading, refetch } = useQuery({
@@ -130,7 +130,7 @@ export default function TruthReportPage() {
     return true;
   });
 
-  // Group PV scans by rack, filtered by search, sorted within each rack
+  // Group PV scans by rack (for rack view) or sort flat (for time/user views)
   const rackGroups = useMemo(() => {
     if (!allScans) return [];
     const filtered = pvSearch
@@ -141,22 +141,32 @@ export default function TruthReportPage() {
         )
       : allScans;
 
+    if (pvSort !== 'rack') return []; // flat view handles rendering separately
+
     const map = new Map<string, ScanEntry[]>();
     for (const scan of filtered) {
       const rack = scan.rack_number || '—';
       if (!map.has(rack)) map.set(rack, []);
       map.get(rack)!.push(scan);
     }
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }));
+  }, [allScans, pvSearch, pvSort]);
 
-    const sortFn = (a: ScanEntry, b: ScanEntry) => {
-      if (pvSort === 'user') return a.scanned_by.localeCompare(b.scanned_by);
+  // Flat sorted list for time/user views
+  const flatScans = useMemo(() => {
+    if (!allScans || pvSort === 'rack') return [];
+    const filtered = pvSearch
+      ? allScans.filter((s) =>
+          s.item_name.toLowerCase().includes(pvSearch.toLowerCase()) ||
+          s.rack_number.toLowerCase().includes(pvSearch.toLowerCase()) ||
+          s.item_key.toLowerCase().includes(pvSearch.toLowerCase())
+        )
+      : allScans;
+    return [...filtered].sort((a, b) => {
+      if (pvSort === 'user') return a.scanned_by.localeCompare(b.scanned_by) || new Date(a.scanned_at).getTime() - new Date(b.scanned_at).getTime();
       if (pvSort === 'time-desc') return new Date(b.scanned_at).getTime() - new Date(a.scanned_at).getTime();
       return new Date(a.scanned_at).getTime() - new Date(b.scanned_at).getTime();
-    };
-
-    return [...map.entries()]
-      .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
-      .map(([rack, scans]) => [rack, [...scans].sort(sortFn)] as [string, ScanEntry[]]);
+    });
   }, [allScans, pvSearch, pvSort]);
 
   // --- Export handlers ---
@@ -435,14 +445,17 @@ export default function TruthReportPage() {
             <>
               <div className="flex items-center justify-between">
                 <p className="text-xs text-gray-400 font-medium">
-                  {rackGroups.length} rack{rackGroups.length !== 1 ? 's' : ''} · {allScans.length} entries · Total Qty:{' '}
+                  {pvSort === 'rack'
+                    ? `${rackGroups.length} rack${rackGroups.length !== 1 ? 's' : ''} · `
+                    : ''}{allScans.length} entries · Total Qty:{' '}
                   <strong className="text-navy">{allScans.reduce((s, e) => s + e.total_quantity, 0).toLocaleString('en-IN')}</strong>
                 </p>
                 <div className="flex items-center gap-1">
                   <span className="text-xs text-gray-400 mr-0.5">Sort:</span>
                   {([
-                    { key: 'time-asc',  label: 'Time ↑' },
-                    { key: 'time-desc', label: 'Time ↓' },
+                    { key: 'rack',      label: 'Rack' },
+                    { key: 'time-desc', label: 'Newest' },
+                    { key: 'time-asc',  label: 'Oldest' },
                     { key: 'user',      label: 'User' },
                   ] as { key: typeof pvSort; label: string }[]).map(({ key, label }) => (
                     <button key={key} onClick={() => setPvSort(key)}
@@ -454,48 +467,26 @@ export default function TruthReportPage() {
                 </div>
               </div>
 
-              <div className="space-y-4">
-                {rackGroups.map(([rack, scans]) => (
-                  <div key={rack}>
-                    {/* Rack header */}
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="bg-[#4B3B8C] text-white text-xs font-bold px-3 py-1 rounded-full">
-                        Rack {rack}
+              {pvSort === 'rack' ? (
+                <div className="space-y-4">
+                  {rackGroups.map(([rack, scans]) => (
+                    <div key={rack}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="bg-[#4B3B8C] text-white text-xs font-bold px-3 py-1 rounded-full">Rack {rack}</div>
+                        <span className="text-xs text-gray-400">{scans.length} item{scans.length !== 1 ? 's' : ''}</span>
+                        <div className="flex-1 border-t border-gray-200" />
                       </div>
-                      <span className="text-xs text-gray-400">{scans.length} item{scans.length !== 1 ? 's' : ''}</span>
-                      <div className="flex-1 border-t border-gray-200" />
+                      <div className="space-y-2">
+                        {scans.map((scan) => <ScanCard key={scan.id} scan={scan} showRack={false} />)}
+                      </div>
                     </div>
-
-                    {/* Scans in this rack */}
-                    <div className="space-y-2">
-                      {scans.map((scan) => (
-                        <div key={scan.id} className={`bg-white rounded-xl px-4 py-3 border ${scan.is_potential_duplicate ? 'border-amber-300 bg-amber-50' : 'border-gray-100'}`}>
-                          <div className="flex items-start justify-between mb-1.5">
-                            <div className="flex-1 min-w-0 pr-2">
-                              <p className="font-semibold text-navy text-sm leading-tight truncate">{scan.item_name}</p>
-                              <p className="text-xs text-gray-400 font-mono">{scan.item_key}</p>
-                            </div>
-                            <div className="text-right flex-shrink-0">
-                              <p className="font-bold text-teal-600 text-sm">{scan.total_quantity} <span className="font-normal text-xs text-gray-400">{scan.uom}</span></p>
-                              {scan.is_potential_duplicate && <span className="text-xs text-amber-600 font-medium">⚠ Dup?</span>}
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-gray-500">
-                            <span>Batch: <strong className="text-navy">{scan.batch_number}</strong></span>
-                            <span>Units × Pack: {scan.units} × {scan.packing_size}</span>
-                            <span>Type: {scan.packing_type}</span>
-                            <span>By: {scan.scanned_by} · {new Date(scan.scanned_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                            {scan.mfg_date && <span>Mfg: {scan.mfg_date}</span>}
-                            {scan.expiry_date && <span>Exp: {scan.expiry_date}</span>}
-                            {scan.packing_material_description && <span className="col-span-2">Material: <strong className="text-navy">{scan.packing_material_description}</strong></span>}
-                            {scan.packing_remarks && <span className="col-span-2 italic">Remarks: {scan.packing_remarks}</span>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {flatScans.map((scan) => <ScanCard key={scan.id} scan={scan} showRack />)}
+                </div>
+              )}
             </>
           )}
         </div>
@@ -597,6 +588,34 @@ export default function TruthReportPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function ScanCard({ scan, showRack }: { scan: ScanEntry; showRack: boolean }) {
+  return (
+    <div className={`bg-white rounded-xl px-4 py-3 border ${scan.is_potential_duplicate ? 'border-amber-300 bg-amber-50' : 'border-gray-100'}`}>
+      <div className="flex items-start justify-between mb-1.5">
+        <div className="flex-1 min-w-0 pr-2">
+          <p className="font-semibold text-navy text-sm leading-tight truncate">{scan.item_name}</p>
+          <p className="text-xs text-gray-400 font-mono">{scan.item_key}</p>
+        </div>
+        <div className="text-right flex-shrink-0">
+          <p className="font-bold text-teal-600 text-sm">{scan.total_quantity} <span className="font-normal text-xs text-gray-400">{scan.uom}</span></p>
+          {scan.is_potential_duplicate && <span className="text-xs text-amber-600 font-medium">⚠ Dup?</span>}
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-gray-500">
+        {showRack && <span className="col-span-2">Rack: <strong className="text-navy">{scan.rack_number || '—'}</strong></span>}
+        <span>Batch: <strong className="text-navy">{scan.batch_number}</strong></span>
+        <span>Units × Pack: {scan.units} × {scan.packing_size}</span>
+        <span>Type: {scan.packing_type}</span>
+        <span>By: {scan.scanned_by} · {new Date(scan.scanned_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+        {scan.mfg_date && <span>Mfg: {scan.mfg_date}</span>}
+        {scan.expiry_date && <span>Exp: {scan.expiry_date}</span>}
+        {scan.packing_material_description && <span className="col-span-2">Material: <strong className="text-navy">{scan.packing_material_description}</strong></span>}
+        {scan.packing_remarks && <span className="col-span-2 italic">Remarks: {scan.packing_remarks}</span>}
+      </div>
     </div>
   );
 }

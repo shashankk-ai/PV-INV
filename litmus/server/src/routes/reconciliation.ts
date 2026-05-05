@@ -186,19 +186,17 @@ router.get(
       const { warehouseId } = req.params;
       const dateRange = buildDateRange(req.query.date as string | undefined);
 
-      const sessions = await prisma.pvSession.findMany({
-        where: { warehouse_id: warehouseId, started_at: { gte: dateRange.gte, lt: dateRange.lt } },
-        select: { id: true },
+      const entries = await prisma.pvEntry.findMany({
+        where: {
+          deleted_at: null,
+          session: {
+            warehouse_id: warehouseId,
+            started_at: { gte: dateRange.gte, lt: dateRange.lt },
+          },
+        },
+        orderBy: { created_at: 'asc' },
+        include: { user: { select: { username: true } } },
       });
-      const sessionIds = sessions.map((s) => s.id);
-
-      const entries = sessionIds.length
-        ? await prisma.pvEntry.findMany({
-            where: { session_id: { in: sessionIds }, deleted_at: null },
-            orderBy: { created_at: 'asc' },
-            include: { user: { select: { username: true } } },
-          })
-        : [];
 
       ok(res, entries.map((e) => ({
         id: e.id,
@@ -240,22 +238,17 @@ router.get(
       const dateRange = all ? undefined : buildDateRange(req.query.date as string | undefined);
       const dateStr = all ? 'all-dates' : dateRange!.gte.toISOString().slice(0, 10);
 
-      const sessions = await prisma.pvSession.findMany({
+      const entries = await prisma.pvEntry.findMany({
         where: {
-          warehouse_id: warehouseId,
-          ...(dateRange ? { started_at: { gte: dateRange.gte, lt: dateRange.lt } } : {}),
+          deleted_at: null,
+          session: {
+            warehouse_id: warehouseId,
+            ...(dateRange ? { started_at: { gte: dateRange.gte, lt: dateRange.lt } } : {}),
+          },
         },
-        select: { id: true },
+        orderBy: { created_at: 'asc' },
+        include: { user: { select: { username: true } } },
       });
-      const sessionIds = sessions.map((s) => s.id);
-
-      const entries = sessionIds.length
-        ? await prisma.pvEntry.findMany({
-            where: { session_id: { in: sessionIds }, deleted_at: null },
-            orderBy: { created_at: 'asc' },
-            include: { user: { select: { username: true } } },
-          })
-        : [];
 
       const csvRows = [
         `LITMUS PV Scan Data — ${warehouse.name} — ${all ? 'All Dates' : dateStr}`,
