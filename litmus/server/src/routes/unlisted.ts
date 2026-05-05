@@ -182,6 +182,7 @@ router.get('/export/csv', requireAuth, requireAdmin, async (req: Request, res: R
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="litmus-unlisted-${warehouse.location_code}-${dateStr}.csv"`);
+    res.setHeader('Cache-Control', 'no-store');
     res.send('﻿' + csvRows.join('\n'));
   } catch (err) {
     next(err);

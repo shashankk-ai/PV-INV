@@ -169,6 +169,7 @@ router.get(
 
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Cache-Control', 'no-store');
       res.send('﻿' + csv); // BOM for Excel
     } catch (err) {
       next(err);
@@ -277,6 +278,7 @@ router.get(
 
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="litmus-pv-${warehouse.location_code}-${dateStr}.csv"`);
+      res.setHeader('Cache-Control', 'no-store');
       res.send('﻿' + csvRows.join('\n'));
     } catch (err) {
       next(err);

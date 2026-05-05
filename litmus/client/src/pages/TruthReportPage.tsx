@@ -439,7 +439,7 @@ export default function TruthReportPage() {
               <p className="text-4xl mb-3">📋</p>
               <p className="font-medium">No scans recorded for {date}</p>
             </div>
-          ) : rackGroups.length === 0 ? (
+          ) : (pvSort === 'rack' ? rackGroups.length === 0 : flatScans.length === 0) ? (
             <div className="text-center py-12 text-gray-400 text-sm">No scans match "{pvSearch}"</div>
           ) : (
             <>
