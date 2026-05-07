@@ -99,6 +99,7 @@ export default function TruthReportPage() {
   const navigate = useNavigate();
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [view, setView] = useState<View>('reco');
+  const [recoMode, setRecoMode] = useState<'date' | 'overall'>('date');
   const [filter, setFilter] = useState<ReconciliationStatus | 'all'>('all');
   const [recoSearch, setRecoSearch] = useState('');
   const [pvSearch, setPvSearch] = useState('');
@@ -107,10 +108,13 @@ export default function TruthReportPage() {
   const [pvSort, setPvSort] = useState<'rack' | 'time-asc' | 'time-desc' | 'user'>('rack');
 
   // --- Queries ---
+  const recoUrl = recoMode === 'overall'
+    ? `/reconciliation/${warehouseId}?all=true`
+    : `/reconciliation/${warehouseId}?date=${date}`;
+
   const { data, isLoading: recoLoading, refetch } = useQuery({
-    queryKey: ['truth-report', warehouseId, date],
-    queryFn: () =>
-      api.get<{ data: ReportData }>(`/reconciliation/${warehouseId}?date=${date}`).then((r) => r.data.data),
+    queryKey: ['truth-report', warehouseId, recoMode === 'overall' ? 'all' : date],
+    queryFn: () => api.get<{ data: ReportData }>(recoUrl).then((r) => r.data.data),
     enabled: !!warehouseId,
   });
 
@@ -286,7 +290,7 @@ export default function TruthReportPage() {
       {/* ── Print header ── */}
       <div className="hidden print:block px-6 py-4 border-b border-gray-200 mb-4">
         <p className="text-2xl font-bold text-navy">LITMUS Truth Report</p>
-        <p className="text-gray-600 mt-1">{data?.warehouse.name} · {date}</p>
+        <p className="text-gray-600 mt-1">{data?.warehouse.name} · {recoMode === 'overall' ? 'All Dates' : date}</p>
         <p className="text-xs text-gray-400 mt-0.5">Generated {new Date().toLocaleString()}</p>
       </div>
 
@@ -326,6 +330,25 @@ export default function TruthReportPage() {
       ══════════════════════════════════════ */}
       {view === 'reco' && (
         <div className="px-4 py-4 max-w-2xl mx-auto w-full space-y-4 print:max-w-full print:px-6">
+
+          {/* Date / Overall toggle */}
+          <div className="flex items-center gap-2 print:hidden">
+            <button
+              onClick={() => setRecoMode('date')}
+              className={`flex-1 py-2 text-xs font-semibold rounded-lg border transition-colors
+                ${recoMode === 'date' ? 'bg-[#4B3B8C] text-white border-[#4B3B8C]' : 'bg-white text-gray-500 border-gray-200 hover:border-[#4B3B8C] hover:text-[#4B3B8C]'}`}
+            >
+              By Date
+            </button>
+            <button
+              onClick={() => setRecoMode('overall')}
+              className={`flex-1 py-2 text-xs font-semibold rounded-lg border transition-colors
+                ${recoMode === 'overall' ? 'bg-[#4B3B8C] text-white border-[#4B3B8C]' : 'bg-white text-gray-500 border-gray-200 hover:border-[#4B3B8C] hover:text-[#4B3B8C]'}`}
+            >
+              Overall (All Dates)
+            </button>
+          </div>
+
           {/* Search */}
           <div className="relative print:hidden">
             <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />

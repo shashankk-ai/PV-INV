@@ -80,7 +80,7 @@ async function buildReport(warehouseId: string, dateRange?: { gte: Date; lt: Dat
   return rows;
 }
 
-// GET /api/reconciliation/:warehouseId?date=YYYY-MM-DD
+// GET /api/reconciliation/:warehouseId?date=YYYY-MM-DD  (or ?all=true for all-time)
 router.get(
   '/:warehouseId',
   requireAuth,
@@ -91,7 +91,8 @@ router.get(
       const warehouse = await prisma.warehouse.findUnique({ where: { id: warehouseId } });
       if (!warehouse) throw AppError.notFound('Warehouse not found');
 
-      const dateRange = buildDateRange(req.query.date as string | undefined);
+      const all = req.query.all === 'true';
+      const dateRange = all ? undefined : buildDateRange(req.query.date as string | undefined);
       const [rows, inventoryAgg] = await Promise.all([
         buildReport(warehouseId, dateRange),
         prisma.systemInventoryCache.aggregate({
@@ -113,7 +114,8 @@ router.get(
         total_inventory_value: inventoryAgg._sum.inventory_value ?? 0,
       };
 
-      ok(res, { warehouse, date: dateRange.gte.toISOString().slice(0, 10), rows, summary });
+      const dateLabel = all ? 'all' : (dateRange!.gte.toISOString().slice(0, 10));
+      ok(res, { warehouse, date: dateLabel, rows, summary });
     } catch (err) {
       next(err);
     }
