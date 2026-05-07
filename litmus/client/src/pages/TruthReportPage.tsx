@@ -132,12 +132,13 @@ export default function TruthReportPage() {
     enabled: !!warehouseId && view === 'unlisted',
   });
 
+  const itemScansUrl = recoMode === 'overall'
+    ? `/reconciliation/${warehouseId}/items/${encodeURIComponent(selectedItem?.item_key ?? '')}/scans?all=true`
+    : `/reconciliation/${warehouseId}/items/${encodeURIComponent(selectedItem?.item_key ?? '')}/scans?date=${date}`;
+
   const { data: itemScans, isLoading: scansLoading } = useQuery({
-    queryKey: ['item-scans', warehouseId, selectedItem?.item_key, date],
-    queryFn: () =>
-      api.get<{ data: ItemScans }>(
-        `/reconciliation/${warehouseId}/items/${encodeURIComponent(selectedItem!.item_key)}/scans?date=${date}`
-      ).then((r) => r.data.data),
+    queryKey: ['item-scans', warehouseId, selectedItem?.item_key, recoMode === 'overall' ? 'all' : date],
+    queryFn: () => api.get<{ data: ItemScans }>(itemScansUrl).then((r) => r.data.data),
     enabled: !!selectedItem && !!warehouseId,
   });
 
@@ -205,7 +206,12 @@ export default function TruthReportPage() {
 
   const handleRecoCsvExport = async () => {
     setDownloading(true);
-    try { await csvDownload(`/reconciliation/${warehouseId}/export/csv?date=${date}`, `litmus-reco-${loc}-${date}.csv`); }
+    const isAll = recoMode === 'overall';
+    const url = isAll
+      ? `/reconciliation/${warehouseId}/export/csv?all=true`
+      : `/reconciliation/${warehouseId}/export/csv?date=${date}`;
+    const filename = isAll ? `litmus-reco-${loc}-all.csv` : `litmus-reco-${loc}-${date}.csv`;
+    try { await csvDownload(url, filename); }
     catch { toast.error('Export failed'); }
     finally { setDownloading(false); }
   };
@@ -313,7 +319,9 @@ export default function TruthReportPage() {
       </div>
 
       {/* ── Shared date bar ── */}
-      <div className="bg-white border-b border-gray-100 px-4 py-2.5 flex items-center gap-2 print:hidden">
+      {/* Date picker is irrelevant for Reco tab when in Overall mode */}
+      <div className={`bg-white border-b border-gray-100 px-4 py-2.5 flex items-center gap-2 print:hidden transition-opacity
+        ${view === 'reco' && recoMode === 'overall' ? 'opacity-30 pointer-events-none' : ''}`}>
         <input
           type="date"
           value={date}
@@ -333,20 +341,16 @@ export default function TruthReportPage() {
 
           {/* Date / Overall toggle */}
           <div className="flex items-center gap-2 print:hidden">
-            <button
-              onClick={() => setRecoMode('date')}
-              className={`flex-1 py-2 text-xs font-semibold rounded-lg border transition-colors
-                ${recoMode === 'date' ? 'bg-[#4B3B8C] text-white border-[#4B3B8C]' : 'bg-white text-gray-500 border-gray-200 hover:border-[#4B3B8C] hover:text-[#4B3B8C]'}`}
-            >
-              By Date
-            </button>
-            <button
-              onClick={() => setRecoMode('overall')}
-              className={`flex-1 py-2 text-xs font-semibold rounded-lg border transition-colors
-                ${recoMode === 'overall' ? 'bg-[#4B3B8C] text-white border-[#4B3B8C]' : 'bg-white text-gray-500 border-gray-200 hover:border-[#4B3B8C] hover:text-[#4B3B8C]'}`}
-            >
-              Overall (All Dates)
-            </button>
+            {(['date', 'overall'] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => { setRecoMode(m); setSelectedItem(null); setFilter('all'); }}
+                className={`flex-1 py-2 text-xs font-semibold rounded-lg border transition-colors
+                  ${recoMode === m ? 'bg-[#4B3B8C] text-white border-[#4B3B8C]' : 'bg-white text-gray-500 border-gray-200 hover:border-[#4B3B8C] hover:text-[#4B3B8C]'}`}
+              >
+                {m === 'date' ? 'By Date' : 'Overall (All Dates)'}
+              </button>
+            ))}
           </div>
 
           {/* Search */}

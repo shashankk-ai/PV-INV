@@ -278,7 +278,7 @@ router.get(
   }
 );
 
-// GET /api/reconciliation/:warehouseId/items/:itemKey/scans?date=YYYY-MM-DD
+// GET /api/reconciliation/:warehouseId/items/:itemKey/scans?date=YYYY-MM-DD  (or ?all=true)
 router.get(
   '/:warehouseId/items/:itemKey/scans',
   requireAuth,
@@ -286,7 +286,8 @@ router.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { warehouseId, itemKey } = req.params;
-      const dateRange = buildDateRange(req.query.date as string | undefined);
+      const all = req.query.all === 'true';
+      const dateRange = all ? undefined : buildDateRange(req.query.date as string | undefined);
 
       const entries = await prisma.pvEntry.findMany({
         where: {
@@ -294,7 +295,7 @@ router.get(
           item_key: itemKey,
           session: {
             warehouse_id: warehouseId,
-            started_at: { gte: dateRange.gte, lt: dateRange.lt },
+            ...(dateRange ? { started_at: { gte: dateRange.gte, lt: dateRange.lt } } : {}),
           },
         },
         orderBy: { created_at: 'asc' },
