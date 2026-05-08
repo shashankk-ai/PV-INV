@@ -6,7 +6,7 @@ ENV_FILE="/opt/litmus/.env"
 REPO="https://github.com/shashankk-ai/PV-INV.git"
 APP_DIR="/home/ec2-user/PV-INV"
 PRISMA="$APP_DIR/litmus/node_modules/.bin/prisma"
-TS_NODE="$APP_DIR/litmus/node_modules/.bin/ts-node"
+TSX="$APP_DIR/litmus/node_modules/.bin/tsx"
 
 # ── 1. Clone or pull ──────────────────────────────────────
 if [ -d "$APP_DIR/.git" ]; then
@@ -41,7 +41,7 @@ echo "==> Removing mock seed data..."
 sudo bash -c "
   set -a; source $ENV_FILE; set +a
   cd $APP_DIR/litmus/server
-  $TS_NODE --project tsconfig.json prisma/cleanup-mock-data.ts
+  $TSX prisma/cleanup-mock-data.ts
 "
 
 # ── 5. Build React client ─────────────────────────────────
