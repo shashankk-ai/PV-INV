@@ -49,6 +49,16 @@ async function main() {
     console.log('No spilled mock items found in real warehouses.');
   }
 
+  // ── 3. Delete pv_entries for mock item keys (prevents them surfacing in master reco) ──
+  const { count: pvDeleted } = await prisma.pvEntry.deleteMany({
+    where: { item_key: { in: MOCK_ITEM_KEYS } },
+  });
+  if (pvDeleted > 0) {
+    console.log(`Deleted ${pvDeleted} PV entries for mock item keys`);
+  } else {
+    console.log('No PV entries found for mock item keys.');
+  }
+
   console.log('Cleanup complete.');
 }
 
