@@ -183,9 +183,18 @@ router.post(
         quantity: number; inventory_value: number; uom: string; uom_options: string[];
       }>();
 
+      // If the file has no warehouse column, scope to a single explicitly-provided
+      // warehouse_id (body param) rather than fan-out to ALL warehouses.
+      // Fan-out to all warehouses caused seed/mock warehouses to receive real data.
+      let fallbackWarehouses = dbWarehouses;
+      if (req.body.warehouse_id) {
+        const scopedWh = dbWarehouses.find((w) => w.id === req.body.warehouse_id);
+        if (scopedWh) fallbackWarehouses = [scopedWh];
+      }
+
       for (const rec of records) {
         const wh = resolveWarehouse(rec);
-        const targets = wh ? [wh] : dbWarehouses;
+        const targets = wh ? [wh] : fallbackWarehouses;
         for (const targetWh of targets) {
           const key = `${rec.item_key}::${targetWh.id}`;
           const existing = aggregated.get(key);
