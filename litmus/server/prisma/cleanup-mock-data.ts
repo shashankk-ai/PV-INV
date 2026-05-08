@@ -1,6 +1,5 @@
 /**
- * One-time cleanup: removes seed/mock warehouses AND mock item keys that were
- * fan-out copied into real warehouses (e.g. WH025) before the upload fix.
+ * Cleanup: removes seed/mock warehouses, mock item keys, and test-user scan data.
  * Safe to run multiple times (idempotent).
  */
 import { PrismaClient } from '@prisma/client';
@@ -8,6 +7,7 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 const MOCK_LOCATION_CODES = ['MUM-CW-01', 'HYD-DC-01', 'BLR-SF-01'];
+const TEST_USERNAMES = ['shashank_ops', 'ops_user'];
 
 const MOCK_ITEM_KEYS = [
   'SCI001','SCI002','SCI003','SCI004','SCI005','SCI006','SCI007','SCI008',
@@ -57,6 +57,28 @@ async function main() {
     console.log(`Deleted ${pvDeleted} PV entries for mock item keys`);
   } else {
     console.log('No PV entries found for mock item keys.');
+  }
+
+  // ── 4. Delete all scan data (pv_entries + sessions) by test users ──────────
+  const testUsers = await prisma.user.findMany({
+    where: { username: { in: TEST_USERNAMES } },
+    select: { id: true, username: true },
+  });
+
+  if (testUsers.length) {
+    const testUserIds = testUsers.map((u) => u.id);
+
+    const { count: entriesDeleted } = await prisma.pvEntry.deleteMany({
+      where: { session: { user_id: { in: testUserIds } } },
+    });
+    console.log(`Deleted ${entriesDeleted} PV entries from test users (${TEST_USERNAMES.join(', ')})`);
+
+    const { count: sessionsDeleted } = await prisma.pvSession.deleteMany({
+      where: { user_id: { in: testUserIds } },
+    });
+    console.log(`Deleted ${sessionsDeleted} PV sessions from test users`);
+  } else {
+    console.log('No test users found (already cleaned or never seeded).');
   }
 
   console.log('Cleanup complete.');

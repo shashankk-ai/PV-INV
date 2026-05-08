@@ -46,6 +46,8 @@ sudo bash -c "
 
 # ── 5. Build React client ─────────────────────────────────
 echo "==> Building client..."
+# Fix ownership if dist was previously created by sudo
+sudo chown -R ec2-user: "$APP_DIR/litmus/client/dist" 2>/dev/null || true
 cd "$APP_DIR/litmus"
 npm run build --workspace=client
 
