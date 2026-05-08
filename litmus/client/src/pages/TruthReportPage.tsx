@@ -602,7 +602,7 @@ export default function TruthReportPage() {
                               <td className="px-2 py-2.5 text-right font-mono font-semibold text-navy">
                                 {row.pv_value > 0
                                   ? `₹${row.pv_value.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
-                                  : '—'}
+                                  : '₹0'}
                               </td>
                               <td className={`px-2 py-2.5 text-right font-mono font-bold
                                 ${row.value_diff < 0 ? 'text-red-600' : row.value_diff > 0 ? 'text-blue-600' : 'text-green-600'}`}>
