@@ -572,12 +572,13 @@ export default function TruthReportPage() {
                     </div>
                   ) : (
                     <div className="rounded-xl border border-gray-200 overflow-x-auto">
-                      <table className="w-full text-xs min-w-[580px]">
+                      <table className="w-full text-xs min-w-[620px]">
                         <thead>
                           <tr className="bg-gray-100 text-gray-500 font-semibold text-right">
                             <th className="px-3 py-2.5 text-left font-semibold">Item</th>
                             <th className="px-2 py-2.5 font-semibold">Sys Value</th>
                             <th className="px-2 py-2.5 font-semibold">Sys QT</th>
+                            <th className="px-2 py-2.5 font-semibold">PV QT</th>
                             <th className="px-2 py-2.5 font-semibold">PV Value</th>
                             <th className="px-2 py-2.5 font-semibold">Val Diff</th>
                             <th className="px-2 py-2.5 font-semibold">QT Diff</th>
@@ -597,6 +598,7 @@ export default function TruthReportPage() {
                                   : '—'}
                               </td>
                               <td className="px-2 py-2.5 text-right font-mono text-gray-600">{row.system_qty}</td>
+                              <td className="px-2 py-2.5 text-right font-mono font-semibold text-navy">{row.pv_qty}</td>
                               <td className="px-2 py-2.5 text-right font-mono font-semibold text-navy">
                                 {row.pv_value > 0
                                   ? `₹${row.pv_value.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
