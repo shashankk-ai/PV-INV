@@ -6,6 +6,7 @@ ENV_FILE="/opt/litmus/.env"
 REPO="https://github.com/shashankk-ai/PV-INV.git"
 APP_DIR="/home/ec2-user/PV-INV"
 PRISMA="$APP_DIR/litmus/node_modules/.bin/prisma"
+TS_NODE="$APP_DIR/litmus/node_modules/.bin/ts-node"
 
 # ── 1. Clone or pull ──────────────────────────────────────
 if [ -d "$APP_DIR/.git" ]; then
@@ -35,20 +36,29 @@ sudo bash -c "
   $PRISMA generate
 "
 
-# ── 4. Build React client ─────────────────────────────────
+# ── 4. Clean up mock/seed data (safe — idempotent) ────────
+echo "==> Removing mock seed data..."
+sudo bash -c "
+  set -a; source $ENV_FILE; set +a
+  cd $APP_DIR/litmus/server
+  $TS_NODE --project tsconfig.json prisma/cleanup-mock-data.ts
+"
+
+# ── 5. Build React client ─────────────────────────────────
 echo "==> Building client..."
 cd "$APP_DIR/litmus"
 npm run build --workspace=client
 
-# ── 5. Start or restart PM2 ───────────────────────────────
-echo "==> Starting server..."
-cd "$APP_DIR/litmus/server"
+# ── 6. Start or restart PM2 ───────────────────────────────
+echo "==> Restarting server..."
 if sudo bash -c "set -a; source $ENV_FILE; set +a; pm2 describe litmus-server" > /dev/null 2>&1; then
   sudo bash -c "set -a; source $ENV_FILE; set +a; pm2 restart litmus-server"
 else
   sudo bash -c "set -a; source $ENV_FILE; set +a; pm2 start --name litmus-server 'npx tsx src/index.ts'"
 fi
-pm2 save
+sudo pm2 save
 
 echo ""
-echo "✓ Deploy complete — open in INCOGNITO to bypass PWA cache"
+echo "✓ Deploy complete"
+echo "  → Open in INCOGNITO to bypass PWA cache"
+echo "  → Re-upload your WH025 inventory file to refresh system data"
