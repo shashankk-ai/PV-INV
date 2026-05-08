@@ -267,8 +267,8 @@ router.get(
         ...rows.map((r) => [
           r.item_key,
           `"${r.item_name.replace(/"/g, '""')}"`,
-          r.system_qty, fmt(r.system_value), fmt(r.avg_cost),
-          r.pv_qty, fmt(r.pv_value), fmt(r.value_diff),
+          r.system_qty, `"${fmt(r.system_value)}"`, `"${fmt(r.avg_cost)}"`,
+          r.pv_qty, `"${fmt(r.pv_value)}"`, `"${fmt(r.value_diff)}"`,
           r.qty_diff, r.status.toUpperCase(),
         ].join(',')),
         '',
