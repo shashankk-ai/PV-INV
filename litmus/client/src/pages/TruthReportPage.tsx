@@ -122,6 +122,7 @@ export default function TruthReportPage() {
   const [selectedItem, setSelectedItem] = useState<ReconciliationRow | null>(null);
   const [pvSort, setPvSort] = useState<'rack' | 'time-asc' | 'time-desc' | 'user'>('rack');
   const [recoView, setRecoView] = useState<'standard' | 'master'>('standard');
+  const [masterFilter, setMasterFilter] = useState<ReconciliationStatus | 'all'>('all');
 
   // --- Queries ---
   const recoUrl = recoMode === 'overall'
@@ -524,113 +525,116 @@ export default function TruthReportPage() {
           )}
 
           {/* ── Master Reco ── */}
-          {recoView === 'master' && (
-            masterLoading ? (
-              <div className="space-y-2">{[1,2,3,4].map((i) => <div key={i} className="card p-4 animate-pulse h-16 bg-gray-100" />)}</div>
-            ) : masterData ? (
+          {recoView === 'master' && (() => {
+            if (masterLoading) return <div className="space-y-2">{[1,2,3,4].map((i) => <div key={i} className="card p-4 animate-pulse h-16 bg-gray-100" />)}</div>;
+            if (!masterData) return <div className="text-center py-12 text-gray-400 text-sm">Failed to load master reconciliation.</div>;
+
+            const masterRows = masterData.rows.filter((r) => {
+              if (masterFilter !== 'all' && r.status !== masterFilter) return false;
+              if (recoSearch) {
+                const q = recoSearch.toLowerCase();
+                return r.item_name.toLowerCase().includes(q) || r.item_key.toLowerCase().includes(q);
+              }
+              return true;
+            });
+
+            const filtSysVal  = masterRows.reduce((s, r) => s + r.system_value, 0);
+            const filtPvVal   = masterRows.reduce((s, r) => s + r.pv_value, 0);
+            const filtValDiff = filtPvVal - filtSysVal;
+
+            return (
               <>
-                {/* Value KPIs */}
+                {/* Filter tabs */}
+                <div className="flex gap-2 overflow-x-auto pb-1 print:hidden">
+                  {(['all', 'short', 'missing', 'excess', 'matching'] as const).map((f) => (
+                    <button key={f} onClick={() => setMasterFilter(f)}
+                      className={`text-xs font-semibold px-3 py-1.5 rounded-full whitespace-nowrap transition-colors
+                        ${masterFilter === f ? 'bg-[#4B3B8C] text-white' : 'bg-white border border-gray-200 text-gray-600'}`}>
+                      {f === 'all' ? `All (${masterData.summary.total})` : `${STATUS_LABELS[f as ReconciliationStatus]} (${masterData.summary[f as ReconciliationStatus]})`}
+                    </button>
+                  ))}
+                </div>
+
+                {/* KPIs — recalculate from filtered rows */}
                 <div className="grid grid-cols-3 gap-2">
                   <div className="rounded-xl bg-teal-50 border border-teal-100 px-3 py-2.5 text-center">
                     <p className="text-sm font-bold text-teal-700 leading-tight">
-                      {masterData.summary.total_system_value > 0
-                        ? `₹${(masterData.summary.total_system_value / 1_00_000).toFixed(1)}L`
-                        : '—'}
+                      {filtSysVal > 0 ? `₹${(filtSysVal / 1_00_000).toFixed(1)}L` : '₹0'}
                     </p>
                     <p className="text-xs font-medium text-teal-600 opacity-80 mt-0.5">System Value</p>
                   </div>
                   <div className="rounded-xl bg-purple-50 border border-purple-100 px-3 py-2.5 text-center">
                     <p className="text-sm font-bold text-purple-700 leading-tight">
-                      {masterData.summary.total_pv_value > 0
-                        ? `₹${(masterData.summary.total_pv_value / 1_00_000).toFixed(1)}L`
-                        : '—'}
+                      {filtPvVal > 0 ? `₹${(filtPvVal / 1_00_000).toFixed(1)}L` : '₹0'}
                     </p>
                     <p className="text-xs font-medium text-purple-600 opacity-80 mt-0.5">PV Value</p>
                   </div>
                   <div className={`rounded-xl border px-3 py-2.5 text-center
-                    ${masterData.summary.total_value_diff < 0 ? 'bg-red-50 border-red-100' : masterData.summary.total_value_diff > 0 ? 'bg-blue-50 border-blue-100' : 'bg-green-50 border-green-100'}`}>
+                    ${filtValDiff < 0 ? 'bg-red-50 border-red-100' : filtValDiff > 0 ? 'bg-blue-50 border-blue-100' : 'bg-green-50 border-green-100'}`}>
                     <p className={`text-sm font-bold leading-tight
-                      ${masterData.summary.total_value_diff < 0 ? 'text-red-600' : masterData.summary.total_value_diff > 0 ? 'text-blue-600' : 'text-green-600'}`}>
-                      {masterData.summary.total_value_diff === 0 ? '₹0' :
-                        `${masterData.summary.total_value_diff > 0 ? '+' : ''}₹${(Math.abs(masterData.summary.total_value_diff) / 1_00_000).toFixed(1)}L`}
+                      ${filtValDiff < 0 ? 'text-red-600' : filtValDiff > 0 ? 'text-blue-600' : 'text-green-600'}`}>
+                      {filtValDiff === 0 ? '₹0' : `${filtValDiff > 0 ? '+' : ''}₹${(Math.abs(filtValDiff) / 1_00_000).toFixed(1)}L`}
                     </p>
                     <p className="text-xs font-medium opacity-80 mt-0.5">Value Diff</p>
                   </div>
                 </div>
 
-                {/* Master table */}
-                {(() => {
-                  const masterRows = recoSearch
-                    ? masterData.rows.filter((r) => {
-                        const q = recoSearch.toLowerCase();
-                        return r.item_name.toLowerCase().includes(q) || r.item_key.toLowerCase().includes(q);
-                      })
-                    : masterData.rows;
-                  return masterRows.length === 0 ? (
-                    <div className="text-center py-12 text-gray-400 text-sm">
-                      {recoSearch ? `No items match "${recoSearch}"` : 'No master reconciliation data available.'}
-                    </div>
-                  ) : (
-                    <div className="rounded-xl border border-gray-200 overflow-x-auto">
-                      <table className="w-full text-xs min-w-[620px]">
-                        <thead>
-                          <tr className="bg-gray-100 text-gray-500 font-semibold text-right">
-                            <th className="px-3 py-2.5 text-left font-semibold">Item</th>
-                            <th className="px-2 py-2.5 font-semibold">Sys Value</th>
-                            <th className="px-2 py-2.5 font-semibold">Sys QT</th>
-                            <th className="px-2 py-2.5 font-semibold">PV QT</th>
-                            <th className="px-2 py-2.5 font-semibold">PV Value</th>
-                            <th className="px-2 py-2.5 font-semibold">Val Diff</th>
-                            <th className="px-2 py-2.5 font-semibold">QT Diff</th>
-                            <th className="px-2 py-2.5 text-center font-semibold">Status</th>
+                {masterRows.length === 0 ? (
+                  <div className="text-center py-12 text-gray-400 text-sm">
+                    {recoSearch ? `No items match "${recoSearch}"` : `No ${masterFilter === 'all' ? '' : masterFilter + ' '}items.`}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-gray-200 overflow-x-auto">
+                    <table className="w-full text-xs min-w-[620px]">
+                      <thead>
+                        <tr className="bg-gray-100 text-gray-500 font-semibold text-right">
+                          <th className="px-3 py-2.5 text-left font-semibold">Item</th>
+                          <th className="px-2 py-2.5 font-semibold">Sys Value</th>
+                          <th className="px-2 py-2.5 font-semibold">Sys QT</th>
+                          <th className="px-2 py-2.5 font-semibold">PV QT</th>
+                          <th className="px-2 py-2.5 font-semibold">PV Value</th>
+                          <th className="px-2 py-2.5 font-semibold">Val Diff</th>
+                          <th className="px-2 py-2.5 font-semibold">QT Diff</th>
+                          <th className="px-2 py-2.5 text-center font-semibold">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {masterRows.map((row) => (
+                          <tr key={row.item_key} className={`border-t border-gray-100 ${ROW_BG[row.status]}`}>
+                            <td className="px-3 py-2.5">
+                              <p className="font-medium text-navy leading-tight truncate max-w-[130px]">{row.item_name}</p>
+                              <p className="text-gray-400 font-mono">{row.item_key}</p>
+                            </td>
+                            <td className="px-2 py-2.5 text-right font-mono text-gray-600">
+                              {row.system_value > 0 ? `₹${row.system_value.toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : '—'}
+                            </td>
+                            <td className="px-2 py-2.5 text-right font-mono text-gray-600">{row.system_qty}</td>
+                            <td className="px-2 py-2.5 text-right font-mono font-semibold text-navy">{row.pv_qty}</td>
+                            <td className="px-2 py-2.5 text-right font-mono font-semibold text-navy">
+                              {row.pv_value > 0 ? `₹${row.pv_value.toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : '₹0'}
+                            </td>
+                            <td className={`px-2 py-2.5 text-right font-mono font-bold
+                              ${row.value_diff < 0 ? 'text-red-600' : row.value_diff > 0 ? 'text-blue-600' : 'text-green-600'}`}>
+                              {row.value_diff === 0 ? '0' : `${row.value_diff > 0 ? '+' : ''}₹${Math.abs(row.value_diff).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`}
+                            </td>
+                            <td className={`px-2 py-2.5 text-right font-mono font-bold
+                              ${row.qty_diff < 0 ? 'text-red-600' : row.qty_diff > 0 ? 'text-blue-600' : 'text-green-600'}`}>
+                              {row.qty_diff > 0 ? `+${row.qty_diff}` : row.qty_diff}
+                            </td>
+                            <td className="px-2 py-2.5 text-center">
+                              <span className={`font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap ${STATUS_STYLES[row.status]}`}>
+                                {STATUS_LABELS[row.status]}
+                              </span>
+                            </td>
                           </tr>
-                        </thead>
-                        <tbody>
-                          {masterRows.map((row) => (
-                            <tr key={row.item_key} className={`border-t border-gray-100 ${ROW_BG[row.status]}`}>
-                              <td className="px-3 py-2.5">
-                                <p className="font-medium text-navy leading-tight truncate max-w-[130px]">{row.item_name}</p>
-                                <p className="text-gray-400 font-mono">{row.item_key}</p>
-                              </td>
-                              <td className="px-2 py-2.5 text-right font-mono text-gray-600">
-                                {row.system_value > 0
-                                  ? `₹${row.system_value.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
-                                  : '—'}
-                              </td>
-                              <td className="px-2 py-2.5 text-right font-mono text-gray-600">{row.system_qty}</td>
-                              <td className="px-2 py-2.5 text-right font-mono font-semibold text-navy">{row.pv_qty}</td>
-                              <td className="px-2 py-2.5 text-right font-mono font-semibold text-navy">
-                                {row.pv_value > 0
-                                  ? `₹${row.pv_value.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
-                                  : '₹0'}
-                              </td>
-                              <td className={`px-2 py-2.5 text-right font-mono font-bold
-                                ${row.value_diff < 0 ? 'text-red-600' : row.value_diff > 0 ? 'text-blue-600' : 'text-green-600'}`}>
-                                {row.value_diff === 0
-                                  ? '0'
-                                  : `${row.value_diff > 0 ? '+' : ''}₹${Math.abs(row.value_diff).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`}
-                              </td>
-                              <td className={`px-2 py-2.5 text-right font-mono font-bold
-                                ${row.qty_diff < 0 ? 'text-red-600' : row.qty_diff > 0 ? 'text-blue-600' : 'text-green-600'}`}>
-                                {row.qty_diff > 0 ? `+${row.qty_diff}` : row.qty_diff}
-                              </td>
-                              <td className="px-2 py-2.5 text-center">
-                                <span className={`font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap ${STATUS_STYLES[row.status]}`}>
-                                  {STATUS_LABELS[row.status]}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  );
-                })()}
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </>
-            ) : (
-              <div className="text-center py-12 text-gray-400 text-sm">Failed to load master reconciliation.</div>
-            )
-          )}
+            );
+          })()}
         </div>
       )}
 
