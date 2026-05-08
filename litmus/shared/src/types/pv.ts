@@ -26,6 +26,19 @@ export interface PvEntry extends PvEntryInput {
   deleted_at: string | null;
 }
 
+export interface MasterRecoRow {
+  item_key: string;
+  item_name: string;
+  system_qty: number;
+  system_value: number;
+  avg_cost: number;
+  pv_qty: number;
+  pv_value: number;
+  value_diff: number;
+  qty_diff: number;
+  status: ReconciliationStatus;
+}
+
 export interface ReconciliationRow {
   item_key: string;
   item_name: string;

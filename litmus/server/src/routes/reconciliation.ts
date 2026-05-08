@@ -3,7 +3,7 @@ import { requireAuth, requireAdmin } from '../middleware/auth';
 import { prisma } from '../services/prisma';
 import { AppError } from '../utils/AppError';
 import { ok } from '../utils/respond';
-import { ReconciliationRow, ReconciliationStatus } from '@litmus/shared';
+import { ReconciliationRow, ReconciliationStatus, MasterRecoRow } from '@litmus/shared';
 
 const router = Router();
 
@@ -116,6 +116,169 @@ router.get(
 
       const dateLabel = all ? 'all' : (dateRange!.gte.toISOString().slice(0, 10));
       ok(res, { warehouse, date: dateLabel, rows, summary });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// GET /api/reconciliation/:warehouseId/master?date=YYYY-MM-DD  (or ?all=true)
+router.get(
+  '/:warehouseId/master',
+  requireAuth,
+  requireAdmin,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { warehouseId } = req.params;
+      const warehouse = await prisma.warehouse.findUnique({ where: { id: warehouseId } });
+      if (!warehouse) throw AppError.notFound('Warehouse not found');
+
+      const all = req.query.all === 'true';
+      const dateRange = all ? undefined : buildDateRange(req.query.date as string | undefined);
+
+      const [systemCache, pvAgg] = await Promise.all([
+        prisma.systemInventoryCache.findMany({
+          where: { warehouse_id: warehouseId },
+          orderBy: { item_name: 'asc' },
+        }),
+        prisma.pvEntry.groupBy({
+          by: ['item_key'],
+          where: {
+            deleted_at: null,
+            session: {
+              warehouse_id: warehouseId,
+              ...(dateRange ? { started_at: { gte: dateRange.gte, lt: dateRange.lt } } : {}),
+            },
+          },
+          _sum: { total_quantity: true },
+        }),
+      ]);
+
+      const pvMap = new Map<string, number>();
+      for (const row of pvAgg) pvMap.set(row.item_key, row._sum.total_quantity ?? 0);
+
+      const systemMap = new Map(systemCache.map((s) => [s.item_key, s]));
+      const allKeys = new Set<string>([...systemCache.map((s) => s.item_key), ...pvAgg.map((r) => r.item_key)]);
+
+      const rows: MasterRecoRow[] = [];
+      for (const key of allKeys) {
+        const sys = systemMap.get(key);
+        const system_qty = sys?.quantity ?? 0;
+        const system_value = sys?.inventory_value ?? 0;
+        const avg_cost = system_qty > 0 ? system_value / system_qty : 0;
+        const pv_qty = pvMap.get(key) ?? 0;
+        const pv_value = Math.round(avg_cost * pv_qty * 100) / 100;
+        const value_diff = Math.round((pv_value - system_value) * 100) / 100;
+        const qty_diff = pv_qty - system_qty;
+        rows.push({
+          item_key: key,
+          item_name: sys?.item_name ?? key,
+          system_qty,
+          system_value,
+          avg_cost: Math.round(avg_cost * 100) / 100,
+          pv_qty,
+          pv_value,
+          value_diff,
+          qty_diff,
+          status: computeStatus(system_qty, pv_qty),
+        });
+      }
+
+      const order: Record<ReconciliationStatus, number> = { missing: 0, short: 1, excess: 2, matching: 3 };
+      rows.sort((a, b) => order[a.status] - order[b.status] || a.item_name.localeCompare(b.item_name));
+
+      const summary = {
+        total: rows.length,
+        matching: rows.filter((r) => r.status === 'matching').length,
+        short: rows.filter((r) => r.status === 'short').length,
+        excess: rows.filter((r) => r.status === 'excess').length,
+        missing: rows.filter((r) => r.status === 'missing').length,
+        total_system_value: Math.round(rows.reduce((s, r) => s + r.system_value, 0) * 100) / 100,
+        total_pv_value: Math.round(rows.reduce((s, r) => s + r.pv_value, 0) * 100) / 100,
+        total_value_diff: Math.round(rows.reduce((s, r) => s + r.value_diff, 0) * 100) / 100,
+      };
+
+      ok(res, { warehouse, rows, summary });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// GET /api/reconciliation/:warehouseId/master/export/csv?date=YYYY-MM-DD
+router.get(
+  '/:warehouseId/master/export/csv',
+  requireAuth,
+  requireAdmin,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { warehouseId } = req.params;
+      const warehouse = await prisma.warehouse.findUnique({ where: { id: warehouseId } });
+      if (!warehouse) throw AppError.notFound('Warehouse not found');
+
+      const all = req.query.all === 'true';
+      const dateRange = all ? undefined : buildDateRange(req.query.date as string | undefined);
+      const dateStr = all ? 'all-dates' : dateRange!.gte.toISOString().slice(0, 10);
+
+      const [systemCache, pvAgg] = await Promise.all([
+        prisma.systemInventoryCache.findMany({ where: { warehouse_id: warehouseId } }),
+        prisma.pvEntry.groupBy({
+          by: ['item_key'],
+          where: {
+            deleted_at: null,
+            session: {
+              warehouse_id: warehouseId,
+              ...(dateRange ? { started_at: { gte: dateRange.gte, lt: dateRange.lt } } : {}),
+            },
+          },
+          _sum: { total_quantity: true },
+        }),
+      ]);
+
+      const pvMap = new Map<string, number>();
+      for (const row of pvAgg) pvMap.set(row.item_key, row._sum.total_quantity ?? 0);
+      const systemMap = new Map(systemCache.map((s) => [s.item_key, s]));
+      const allKeys = new Set<string>([...systemCache.map((s) => s.item_key), ...pvAgg.map((r) => r.item_key)]);
+
+      const rows: MasterRecoRow[] = [];
+      for (const key of allKeys) {
+        const sys = systemMap.get(key);
+        const system_qty = sys?.quantity ?? 0;
+        const system_value = sys?.inventory_value ?? 0;
+        const avg_cost = system_qty > 0 ? system_value / system_qty : 0;
+        const pv_qty = pvMap.get(key) ?? 0;
+        const pv_value = Math.round(avg_cost * pv_qty * 100) / 100;
+        rows.push({
+          item_key: key, item_name: sys?.item_name ?? key,
+          system_qty, system_value, avg_cost: Math.round(avg_cost * 100) / 100,
+          pv_qty, pv_value,
+          value_diff: Math.round((pv_value - system_value) * 100) / 100,
+          qty_diff: pv_qty - system_qty,
+          status: computeStatus(system_qty, pv_qty),
+        });
+      }
+      rows.sort((a, b) => a.item_name.localeCompare(b.item_name));
+
+      const fmt = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const csvRows = [
+        `LITMUS Master Reconciliation — ${warehouse.name} — ${all ? 'All Dates' : dateStr}`,
+        '',
+        'Item Key,Item Name,System QT,System Value,Avg Cost,PV QT,PV Value,Value Difference,QT Difference,Status',
+        ...rows.map((r) => [
+          r.item_key,
+          `"${r.item_name.replace(/"/g, '""')}"`,
+          r.system_qty, fmt(r.system_value), fmt(r.avg_cost),
+          r.pv_qty, fmt(r.pv_value), fmt(r.value_diff),
+          r.qty_diff, r.status.toUpperCase(),
+        ].join(',')),
+        '',
+        `Generated by LITMUS on ${new Date().toISOString()}`,
+      ];
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="litmus-master-${warehouse.location_code}-${dateStr}.csv"`);
+      res.setHeader('Cache-Control', 'no-store');
+      res.send('﻿' + csvRows.join('\n'));
     } catch (err) {
       next(err);
     }
