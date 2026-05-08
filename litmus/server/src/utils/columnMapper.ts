@@ -51,6 +51,8 @@ const ALIASES: Record<keyof ColumnMap, string[]> = {
     'value','total value','stock value','cost value','item value',
     'valuation','stock valuation','inventory cost','total cost',
     'amount','total amount','net value','gross value',
+    'avg cost','avgcost','average cost','avg_cost','average_cost',
+    'total inventory value','inventory amount',
   ],
   uom:         ['uom','unit','unit of measure','units','measure','stockuomcode'],
   cas_number:  ['cas','cas_number','cas number','cas no','cas#'],

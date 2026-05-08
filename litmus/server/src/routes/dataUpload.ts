@@ -63,9 +63,9 @@ function applyMap(rows: Record<string, unknown>[], map: ColumnMap): MappedRecord
       const quantity = parseQty(rawQty);
 
       const rawVal = map.inventory_value ? row[map.inventory_value] : undefined;
-      const inventory_value = rawVal !== undefined && rawVal !== ''
-        ? parseFloat(String(rawVal).replace(/,/g, '')) || 0
-        : 0;
+      const valStr = rawVal !== undefined && rawVal !== null ? String(rawVal).replace(/,/g, '').trim() : '';
+      // Excel error cells (#N/A, #REF!, etc.) must be treated as 0
+      const inventory_value = valStr === '' || valStr.startsWith('#') ? 0 : parseFloat(valStr) || 0;
 
       const uom = map.uom ? String(row[map.uom] ?? '').trim() || 'units' : 'units';
 
