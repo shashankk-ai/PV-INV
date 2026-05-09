@@ -591,6 +591,7 @@ export default function TruthReportPage() {
                           <th className="px-3 py-2.5 text-left font-semibold">Item</th>
                           <th className="px-2 py-2.5 font-semibold">Sys Value</th>
                           <th className="px-2 py-2.5 font-semibold">Sys QT</th>
+                          <th className="px-2 py-2.5 font-semibold">Avg Cost</th>
                           <th className="px-2 py-2.5 font-semibold">PV QT</th>
                           <th className="px-2 py-2.5 font-semibold">PV Value</th>
                           <th className="px-2 py-2.5 font-semibold">Val Diff</th>
@@ -609,6 +610,9 @@ export default function TruthReportPage() {
                               {row.system_value > 0 ? `₹${row.system_value.toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : '—'}
                             </td>
                             <td className="px-2 py-2.5 text-right font-mono text-gray-600">{row.system_qty}</td>
+                            <td className="px-2 py-2.5 text-right font-mono text-gray-500">
+                              {row.avg_cost > 0 ? `₹${row.avg_cost.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'}
+                            </td>
                             <td className="px-2 py-2.5 text-right font-mono font-semibold text-navy">{row.pv_qty}</td>
                             <td className="px-2 py-2.5 text-right font-mono font-semibold text-navy">
                               {row.pv_value > 0 ? `₹${row.pv_value.toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : '₹0'}
