@@ -75,6 +75,7 @@ interface ItemScans {
 interface MasterRecoData {
   warehouse: Warehouse;
   rows: MasterRecoRow[];
+  pv_date: string | null;
   summary: {
     total: number;
     matching: number;
@@ -544,6 +545,13 @@ export default function TruthReportPage() {
 
             return (
               <>
+                {/* Session date label */}
+                {masterData.pv_date && (
+                  <p className="text-xs text-gray-400 -mt-1 mb-1">
+                    PV data from session: <span className="font-semibold text-gray-600">{masterData.pv_date}</span>
+                  </p>
+                )}
+
                 {/* Filter tabs */}
                 <div className="flex gap-2 overflow-x-auto pb-1 print:hidden">
                   {(['all', 'short', 'missing', 'excess', 'matching'] as const).map((f) => (
