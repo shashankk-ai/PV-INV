@@ -134,21 +134,7 @@ router.get(
       if (!warehouse) throw AppError.notFound('Warehouse not found');
 
       const all = req.query.all === 'true';
-      let dateRange = all ? undefined : buildDateRange(req.query.date as string | undefined);
-
-      // When "all dates" is requested, scope to the most recent session date rather than
-      // summing across all sessions. Summing multiple sessions multiplies physical counts,
-      // making PV quantities and values meaninglessly inflated.
-      if (all) {
-        const latestSession = await prisma.pvSession.findFirst({
-          where: { warehouse_id: warehouseId },
-          orderBy: { started_at: 'desc' },
-          select: { started_at: true },
-        });
-        if (latestSession) {
-          dateRange = buildDateRange(latestSession.started_at.toISOString().slice(0, 10));
-        }
-      }
+      const dateRange = all ? undefined : buildDateRange(req.query.date as string | undefined);
 
       const [systemCache, pvAgg] = await Promise.all([
         prisma.systemInventoryCache.findMany({
@@ -212,8 +198,7 @@ router.get(
         total_value_diff: Math.round(rows.reduce((s, r) => s + r.value_diff, 0) * 100) / 100,
       };
 
-      const pvDateLabel = dateRange ? dateRange.gte.toISOString().slice(0, 10) : null;
-      ok(res, { warehouse, rows, summary, pv_date: pvDateLabel });
+      ok(res, { warehouse, rows, summary });
     } catch (err) {
       next(err);
     }
