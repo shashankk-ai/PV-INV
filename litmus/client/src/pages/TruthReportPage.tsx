@@ -243,8 +243,10 @@ export default function TruthReportPage() {
     finally { setDownloading(false); }
   };
   const handleRecoAllExport = async () => {
+    setDownloading(true);
     try { await csvDownload(`/reconciliation/${warehouseId}/export/csv?all=true`, `litmus-reco-${loc}-all.csv`); }
     catch { toast.error('Export failed'); }
+    finally { setDownloading(false); }
   };
 
   const handleMasterCsvExport = async () => {
@@ -260,8 +262,10 @@ export default function TruthReportPage() {
   };
 
   const handleMasterAllExport = async () => {
+    setDownloading(true);
     try { await csvDownload(`/reconciliation/${warehouseId}/master/export/csv?all=true`, `litmus-master-${loc}-all.csv`); }
     catch { toast.error('Export failed'); }
+    finally { setDownloading(false); }
   };
 
   const handlePvCsvExport = async () => {
@@ -400,7 +404,7 @@ export default function TruthReportPage() {
             {(['standard', 'master'] as const).map((v) => (
               <button
                 key={v}
-                onClick={() => setRecoView(v)}
+                onClick={() => { setRecoView(v); setSelectedItem(null); }}
                 className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors
                   ${recoView === v ? 'bg-white text-[#4B3B8C] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
               >

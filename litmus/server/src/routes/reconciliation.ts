@@ -122,6 +122,51 @@ router.get(
   }
 );
 
+// ── Shared helper: builds master reco rows for a warehouse + date range ───────
+async function buildMasterReport(warehouseId: string, dateRange?: { gte: Date; lt: Date }): Promise<MasterRecoRow[]> {
+  const [systemCache, pvAgg] = await Promise.all([
+    prisma.systemInventoryCache.findMany({ where: { warehouse_id: warehouseId } }),
+    prisma.pvEntry.groupBy({
+      by: ['item_key'],
+      where: {
+        deleted_at: null,
+        session: {
+          warehouse_id: warehouseId,
+          ...(dateRange ? { started_at: { gte: dateRange.gte, lt: dateRange.lt } } : {}),
+        },
+      },
+      _sum: { total_quantity: true },
+    }),
+  ]);
+
+  const pvMap = new Map<string, number>();
+  for (const row of pvAgg) pvMap.set(row.item_key, row._sum.total_quantity ?? 0);
+  const systemMap = new Map(systemCache.map((s) => [s.item_key, s]));
+  const allKeys = new Set<string>([...systemCache.map((s) => s.item_key), ...pvAgg.map((r) => r.item_key)]);
+
+  const rows: MasterRecoRow[] = [];
+  for (const key of allKeys) {
+    const sys = systemMap.get(key);
+    const system_qty = sys?.quantity ?? 0;
+    const system_value = sys?.inventory_value ?? 0;
+    const avg_cost = system_qty > 0 ? system_value / system_qty : 0;
+    const pv_qty = pvMap.get(key) ?? 0;
+    const pv_value = Math.round(avg_cost * pv_qty * 100) / 100;
+    rows.push({
+      item_key: key, item_name: sys?.item_name ?? key,
+      system_qty, system_value, avg_cost: Math.round(avg_cost * 100) / 100,
+      pv_qty, pv_value,
+      value_diff: Math.round((pv_value - system_value) * 100) / 100,
+      qty_diff: pv_qty - system_qty,
+      status: computeStatus(system_qty, pv_qty),
+    });
+  }
+
+  const order: Record<ReconciliationStatus, number> = { missing: 0, short: 1, excess: 2, matching: 3 };
+  rows.sort((a, b) => order[a.status] - order[b.status] || a.item_name.localeCompare(b.item_name));
+  return rows;
+}
+
 // GET /api/reconciliation/:warehouseId/master?date=YYYY-MM-DD  (or ?all=true)
 router.get(
   '/:warehouseId/master',
@@ -135,57 +180,7 @@ router.get(
 
       const all = req.query.all === 'true';
       const dateRange = all ? undefined : buildDateRange(req.query.date as string | undefined);
-
-      const [systemCache, pvAgg] = await Promise.all([
-        prisma.systemInventoryCache.findMany({
-          where: { warehouse_id: warehouseId },
-          orderBy: { item_name: 'asc' },
-        }),
-        prisma.pvEntry.groupBy({
-          by: ['item_key'],
-          where: {
-            deleted_at: null,
-            session: {
-              warehouse_id: warehouseId,
-              ...(dateRange ? { started_at: { gte: dateRange.gte, lt: dateRange.lt } } : {}),
-            },
-          },
-          _sum: { total_quantity: true },
-        }),
-      ]);
-
-      const pvMap = new Map<string, number>();
-      for (const row of pvAgg) pvMap.set(row.item_key, row._sum.total_quantity ?? 0);
-
-      const systemMap = new Map(systemCache.map((s) => [s.item_key, s]));
-      const allKeys = new Set<string>([...systemCache.map((s) => s.item_key), ...pvAgg.map((r) => r.item_key)]);
-
-      const rows: MasterRecoRow[] = [];
-      for (const key of allKeys) {
-        const sys = systemMap.get(key);
-        const system_qty = sys?.quantity ?? 0;
-        const system_value = sys?.inventory_value ?? 0;
-        const avg_cost = system_qty > 0 ? system_value / system_qty : 0;
-        const pv_qty = pvMap.get(key) ?? 0;
-        const pv_value = Math.round(avg_cost * pv_qty * 100) / 100;
-        const value_diff = Math.round((pv_value - system_value) * 100) / 100;
-        const qty_diff = pv_qty - system_qty;
-        rows.push({
-          item_key: key,
-          item_name: sys?.item_name ?? key,
-          system_qty,
-          system_value,
-          avg_cost: Math.round(avg_cost * 100) / 100,
-          pv_qty,
-          pv_value,
-          value_diff,
-          qty_diff,
-          status: computeStatus(system_qty, pv_qty),
-        });
-      }
-
-      const order: Record<ReconciliationStatus, number> = { missing: 0, short: 1, excess: 2, matching: 3 };
-      rows.sort((a, b) => order[a.status] - order[b.status] || a.item_name.localeCompare(b.item_name));
+      const rows = await buildMasterReport(warehouseId, dateRange);
 
       const summary = {
         total: rows.length,
@@ -219,45 +214,7 @@ router.get(
       const all = req.query.all === 'true';
       const dateRange = all ? undefined : buildDateRange(req.query.date as string | undefined);
       const dateStr = all ? 'all-dates' : dateRange!.gte.toISOString().slice(0, 10);
-
-      const [systemCache, pvAgg] = await Promise.all([
-        prisma.systemInventoryCache.findMany({ where: { warehouse_id: warehouseId } }),
-        prisma.pvEntry.groupBy({
-          by: ['item_key'],
-          where: {
-            deleted_at: null,
-            session: {
-              warehouse_id: warehouseId,
-              ...(dateRange ? { started_at: { gte: dateRange.gte, lt: dateRange.lt } } : {}),
-            },
-          },
-          _sum: { total_quantity: true },
-        }),
-      ]);
-
-      const pvMap = new Map<string, number>();
-      for (const row of pvAgg) pvMap.set(row.item_key, row._sum.total_quantity ?? 0);
-      const systemMap = new Map(systemCache.map((s) => [s.item_key, s]));
-      const allKeys = new Set<string>([...systemCache.map((s) => s.item_key), ...pvAgg.map((r) => r.item_key)]);
-
-      const rows: MasterRecoRow[] = [];
-      for (const key of allKeys) {
-        const sys = systemMap.get(key);
-        const system_qty = sys?.quantity ?? 0;
-        const system_value = sys?.inventory_value ?? 0;
-        const avg_cost = system_qty > 0 ? system_value / system_qty : 0;
-        const pv_qty = pvMap.get(key) ?? 0;
-        const pv_value = Math.round(avg_cost * pv_qty * 100) / 100;
-        rows.push({
-          item_key: key, item_name: sys?.item_name ?? key,
-          system_qty, system_value, avg_cost: Math.round(avg_cost * 100) / 100,
-          pv_qty, pv_value,
-          value_diff: Math.round((pv_value - system_value) * 100) / 100,
-          qty_diff: pv_qty - system_qty,
-          status: computeStatus(system_qty, pv_qty),
-        });
-      }
-      rows.sort((a, b) => a.item_name.localeCompare(b.item_name));
+      const rows = await buildMasterReport(warehouseId, dateRange);
 
       // q() quotes text fields; numeric columns use plain toFixed(2) — no locale
       // formatting — so Excel can parse and sum them correctly.
