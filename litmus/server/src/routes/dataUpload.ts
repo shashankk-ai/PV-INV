@@ -136,12 +136,21 @@ router.post(
       const uploader = res.locals.user as { id: string; username: string };
 
       // ── 1. Extract unique warehouses from the file ─────────────────────────
-      // Map: location_code → warehouse_name
-      const warehouseSet = new Map<string, string>();
+      const warehouseSet = new Map<string, string>(); // location_code → name
       for (const rec of records) {
         const code = rec.location_code ?? rec.warehouse_name;
         const name = rec.warehouse_name ?? rec.location_code;
         if (code && name) warehouseSet.set(code, name);
+      }
+
+      // Require warehouse selection when the file has no warehouse column.
+      // Without it we cannot safely scope the inventory replacement.
+      const fileHasWarehouseColumn = warehouseSet.size > 0;
+      const explicitWarehouseId: string | undefined = req.body.warehouse_id || undefined;
+      if (!fileHasWarehouseColumn && !explicitWarehouseId) {
+        throw AppError.badRequest(
+          'This file has no warehouse column. Select a warehouse before uploading.'
+        );
       }
 
       // ── 2. Upsert warehouses discovered in the file ────────────────────────
@@ -153,7 +162,7 @@ router.post(
         });
       }
 
-      // ── 3. Remove stale mock warehouses (no sessions, no inventory, not in file) ──
+      // ── 3. Remove stale warehouses (no sessions, no inventory, not in file) ──
       if (warehouseSet.size > 0) {
         await prisma.warehouse.deleteMany({
           where: {
@@ -175,26 +184,23 @@ router.post(
         return null;
       };
 
-      // ── 5. Bulk-replace system inventory ──────────────────────────────────
-      // Aggregate by item_key+warehouse_id — files often have one row per lot,
-      // so we SUM quantities across all lots for the same item+warehouse.
+      // ── 5. Aggregate inventory rows ────────────────────────────────────────
       const aggregated = new Map<string, {
         item_key: string; item_name: string; warehouse_id: string;
         quantity: number; inventory_value: number; uom: string; uom_options: string[];
       }>();
 
-      // If the file has no warehouse column, scope to a single explicitly-provided
-      // warehouse_id (body param) rather than fan-out to ALL warehouses.
-      // Fan-out to all warehouses caused seed/mock warehouses to receive real data.
-      let fallbackWarehouses = dbWarehouses;
-      if (req.body.warehouse_id) {
-        const scopedWh = dbWarehouses.find((w) => w.id === req.body.warehouse_id);
-        if (scopedWh) fallbackWarehouses = [scopedWh];
+      // No-warehouse-column files: scope to the explicitly selected warehouse only.
+      const fallbackWh = explicitWarehouseId
+        ? dbWarehouses.find((w) => w.id === explicitWarehouseId)
+        : null;
+      if (!fileHasWarehouseColumn && !fallbackWh) {
+        throw AppError.badRequest('Selected warehouse not found.');
       }
 
       for (const rec of records) {
         const wh = resolveWarehouse(rec);
-        const targets = wh ? [wh] : fallbackWarehouses;
+        const targets = wh ? [wh] : [fallbackWh!];
         for (const targetWh of targets) {
           const key = `${rec.item_key}::${targetWh.id}`;
           const existing = aggregated.get(key);
@@ -203,13 +209,9 @@ router.post(
             existing.inventory_value += rec.inventory_value;
           } else {
             aggregated.set(key, {
-              item_key: rec.item_key,
-              item_name: rec.item_name,
-              warehouse_id: targetWh.id,
-              quantity: rec.quantity,
-              inventory_value: rec.inventory_value,
-              uom: rec.uom,
-              uom_options: rec.uom_options,
+              item_key: rec.item_key, item_name: rec.item_name,
+              warehouse_id: targetWh.id, quantity: rec.quantity,
+              inventory_value: rec.inventory_value, uom: rec.uom, uom_options: rec.uom_options,
             });
           }
         }
@@ -217,23 +219,35 @@ router.post(
 
       const inventoryRows = [...aggregated.values()];
 
-      const warehouseIds = dbWarehouses.map((w) => w.id);
+      // Only replace inventory for the warehouses THIS upload touches.
+      // Never touch other warehouses — parallel uploads must not interfere.
+      const targetWarehouseIds = fileHasWarehouseColumn
+        ? [...warehouseSet.keys()].map((c) => whByCode.get(c.toLowerCase())?.id).filter(Boolean) as string[]
+        : [fallbackWh!.id];
+
       await prisma.$transaction([
-        prisma.systemInventoryCache.deleteMany({ where: { warehouse_id: { in: warehouseIds } } }),
+        prisma.systemInventoryCache.deleteMany({ where: { warehouse_id: { in: targetWarehouseIds } } }),
         prisma.systemInventoryCache.createMany({ data: inventoryRows, skipDuplicates: true }),
       ]);
       const upserted = inventoryRows.length;
 
-      // ── 6. Rebuild Redis items cache ───────────────────────────────────────
-      const uniqueItems = Array.from(
-        new Map(records.map((r) => [r.item_key, {
-          item_key: r.item_key,
-          item_name: r.item_name,
-          cas_number: r.cas_number ?? '',
-          uom_options: r.uom_options,
-        }])).values()
-      );
-      await redis.setex(ITEMS_KEY, ITEMS_TTL, JSON.stringify(uniqueItems));
+      // ── 6. Rebuild Redis items cache — scoped per warehouse ────────────────
+      // Build per-warehouse item lists so scanners only see their warehouse's items.
+      const itemsByWarehouse = new Map<string, typeof inventoryRows>();
+      for (const row of inventoryRows) {
+        if (!itemsByWarehouse.has(row.warehouse_id)) itemsByWarehouse.set(row.warehouse_id, []);
+        itemsByWarehouse.get(row.warehouse_id)!.push(row);
+      }
+      for (const [whId, whRows] of itemsByWarehouse) {
+        const whItems = Array.from(
+          new Map(whRows.map((r) => [r.item_key, {
+            item_key: r.item_key, item_name: r.item_name,
+            cas_number: records.find((x) => x.item_key === r.item_key)?.cas_number ?? '',
+            uom_options: r.uom_options,
+          }])).values()
+        );
+        await redis.setex(`${ITEMS_KEY}:${whId}`, ITEMS_TTL, JSON.stringify(whItems));
+      }
       await redis.set(SYNC_TS_KEY, Date.now().toString());
 
       // ── 7. Record the upload ───────────────────────────────────────────────
@@ -245,17 +259,21 @@ router.post(
           row_count: records.length,
           column_map: columnMap as object,
           uploaded_by: uploader.id,
+          warehouse_id: fileHasWarehouseColumn ? null : fallbackWh!.id,
         },
-        include: { uploader: { select: { id: true, username: true } } },
+        include: {
+          uploader:  { select: { id: true, username: true } },
+          warehouse: { select: { id: true, name: true, location_code: true } },
+        },
       });
 
-      logger.info({ rows: records.length, upserted, warehouses: warehouseSet.size, uploadId: dataUpload.id }, 'DataUpload: committed');
+      logger.info({ rows: records.length, upserted, warehouses: targetWarehouseIds.length, uploadId: dataUpload.id }, 'DataUpload: committed');
 
       created(res, {
         upload: dataUpload,
         rows_parsed: records.length,
         records_upserted: upserted,
-        warehouses_synced: warehouseSet.size,
+        warehouses_synced: targetWarehouseIds.length,
       });
     } catch (err) {
       next(err);
@@ -273,7 +291,10 @@ router.get(
       const uploads = await prisma.dataUpload.findMany({
         orderBy: { uploaded_at: 'desc' },
         take: 20,
-        include: { uploader: { select: { id: true, username: true } } },
+        include: {
+          uploader:  { select: { id: true, username: true } },
+          warehouse: { select: { id: true, name: true, location_code: true } },
+        },
       });
       ok(res, uploads);
     } catch (err) {

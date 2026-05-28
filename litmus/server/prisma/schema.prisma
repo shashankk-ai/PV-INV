@@ -33,6 +33,7 @@ model Warehouse {
 
   pv_sessions          PvSession[]
   system_inventory     SystemInventoryCache[]
+  data_uploads         DataUpload[]
 
   @@map("warehouses")
 }
@@ -144,18 +145,21 @@ model SystemInventoryCache {
 }
 
 model DataUpload {
-  id               String   @id @default(uuid())
-  filename         String
+  id                String   @id @default(uuid())
+  filename          String
   original_filename String
-  source           String   @default("file")  // "file" | "zoho"
-  row_count        Int
-  column_map       Json     // detected + confirmed column mapping
-  uploaded_by      String
-  uploaded_at      DateTime @default(now())
+  source            String   @default("file")  // "file" | "zoho"
+  row_count         Int
+  column_map        Json     // detected + confirmed column mapping
+  uploaded_by       String
+  uploaded_at       DateTime @default(now())
+  warehouse_id      String?  // null = multi-warehouse upload (file had warehouse column)
 
-  uploader User @relation(fields: [uploaded_by], references: [id])
+  uploader  User       @relation(fields: [uploaded_by], references: [id])
+  warehouse Warehouse? @relation(fields: [warehouse_id], references: [id])
 
   @@index([uploaded_by])
+  @@index([warehouse_id])
   @@map("data_uploads")
 }
 

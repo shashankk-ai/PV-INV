@@ -31,6 +31,7 @@ interface DataUpload {
   column_map: ColumnMap;
   uploaded_at: string;
   uploader: { id: string; username: string };
+  warehouse: { id: string; name: string; location_code: string } | null;
 }
 
 interface Warehouse {
@@ -131,7 +132,9 @@ export default function DataUploadPage() {
     if (file) handleFile(file);
   }, [handleFile]);
 
-  const canCommit = columnMap && REQUIRED_FIELDS.every((f) => columnMap[f]);
+  const hasWarehouseColumn = !!(columnMap?.location_code || columnMap?.warehouse);
+  const needsWarehouseSelection = !hasWarehouseColumn && !warehouseId;
+  const canCommit = columnMap && REQUIRED_FIELDS.every((f) => columnMap[f]) && !needsWarehouseSelection;
 
   return (
     <div className="space-y-5">
@@ -233,19 +236,35 @@ export default function DataUploadPage() {
             ))}
           </div>
 
-          {/* Warehouse override */}
-          <div className="card p-4 mb-3">
-            <p className="text-xs font-semibold text-navy mb-2">Warehouse Override</p>
+          {/* Warehouse selection */}
+          <div className={`card p-4 mb-3 ${needsWarehouseSelection ? 'border-red-300 ring-1 ring-red-300' : ''}`}>
+            <div className="flex items-center gap-2 mb-1">
+              <p className="text-xs font-semibold text-navy">
+                Warehouse
+                {!hasWarehouseColumn && <span className="text-red-500 ml-0.5">*</span>}
+              </p>
+              {hasWarehouseColumn && (
+                <span className="text-xs bg-teal-50 text-teal-700 font-medium px-2 py-0.5 rounded-full">
+                  Detected in file
+                </span>
+              )}
+            </div>
             <p className="text-xs text-gray-500 mb-2">
-              If your file has no warehouse column, or you want to apply all rows to one warehouse, select it here.
-              Leave blank to use the warehouse column from the file (applying rows to all warehouses if missing).
+              {hasWarehouseColumn
+                ? 'Warehouse column found in file. Optionally override to force all rows into one warehouse.'
+                : 'No warehouse column detected — you must select the target warehouse for this upload.'}
             </p>
+            {needsWarehouseSelection && (
+              <p className="text-xs text-red-600 font-medium mb-2">
+                Select a warehouse to continue.
+              </p>
+            )}
             <select
               value={warehouseId}
               onChange={(e) => setWarehouseId(e.target.value)}
-              className="input-field text-xs py-1.5"
+              className={`input-field text-xs py-1.5 ${needsWarehouseSelection ? 'border-red-400 ring-1 ring-red-400' : ''}`}
             >
-              <option value="">Use file column / apply to all</option>
+              <option value="">{hasWarehouseColumn ? '— use file column —' : '— select warehouse —'}</option>
               {warehouses.map((w) => (
                 <option key={w.id} value={w.id}>{w.name} ({w.location_code})</option>
               ))}
@@ -323,7 +342,11 @@ export default function DataUploadPage() {
                     )}
                   </div>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    {u.row_count} rows · uploaded by <span className="font-medium">{u.uploader.username}</span> · {formatDateTime(u.uploaded_at)}
+                    {u.warehouse
+                      ? <span className="font-medium text-gray-600">{u.warehouse.name}</span>
+                      : <span className="text-gray-400 italic">multi-warehouse</span>
+                    }
+                    {' · '}{u.row_count} rows · by <span className="font-medium">{u.uploader.username}</span> · {formatDateTime(u.uploaded_at)}
                   </p>
                   <div className="mt-1.5 flex flex-wrap gap-1">
                     {(Object.entries(u.column_map) as [keyof ColumnMap, string | null][])

@@ -9,10 +9,11 @@ const router = Router();
 router.get('/items', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const search = req.query.search as string | undefined;
+    const warehouseId = req.query.warehouse_id as string | undefined;
     const start = Date.now();
     const [items, totalCount] = await Promise.all([
-      dataSyncService.getItems(search),
-      dataSyncService.getTotalItemCount(),
+      dataSyncService.getItems(search, warehouseId),
+      dataSyncService.getTotalItemCount(warehouseId),
     ]);
     const stale = await dataSyncService.isStale();
     if (stale) res.setHeader('X-Data-Stale', 'true');

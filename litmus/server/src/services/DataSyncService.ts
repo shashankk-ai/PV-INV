@@ -90,36 +90,44 @@ export class DataSyncService {
     return age > this.syncIntervalMinutes * 2 * 60 * 1000;
   }
 
-  async getItems(search?: string): Promise<ZohoChemical[]> {
-    // Try Redis (Zoho) first
-    let zohoItems: ZohoChemical[] = [];
-    const raw = await redis.get(ITEMS_KEY);
-    if (raw) {
-      zohoItems = JSON.parse(raw) as ZohoChemical[];
-    } else {
-      try {
-        await this.syncAll();
-        const fresh = await redis.get(ITEMS_KEY);
-        if (fresh) zohoItems = JSON.parse(fresh) as ZohoChemical[];
-      } catch {
-        // Zoho unavailable — fall through to DB
+  async getItems(search?: string, warehouseId?: string): Promise<ZohoChemical[]> {
+    // Try warehouse-scoped Redis cache first (populated by file upload)
+    let cachedItems: ZohoChemical[] = [];
+    if (warehouseId) {
+      const whRaw = await redis.get(`${ITEMS_KEY}:${warehouseId}`);
+      if (whRaw) cachedItems = JSON.parse(whRaw) as ZohoChemical[];
+    }
+
+    // Fall back to Zoho global cache if no warehouse-scoped cache
+    if (!cachedItems.length) {
+      const raw = await redis.get(ITEMS_KEY);
+      if (raw) {
+        cachedItems = JSON.parse(raw) as ZohoChemical[];
+      } else {
+        try {
+          await this.syncAll();
+          const fresh = await redis.get(ITEMS_KEY);
+          if (fresh) cachedItems = JSON.parse(fresh) as ZohoChemical[];
+        } catch {
+          // Zoho unavailable — fall through to DB
+        }
       }
     }
 
-    // Always merge with items from uploaded inventory (SystemInventoryCache)
-    // so CSV-uploaded items appear as suggestions even when Zoho is down/unconfigured
-    const dbItems = await this.getItemsFromDB();
+    // Always merge with DB items for the warehouse so CSV-uploaded items appear
+    // as suggestions even when Zoho is down/unconfigured
+    const dbItems = await this.getItemsFromDB(warehouseId);
 
-    // Merge: Zoho items take priority; DB fills in anything not in Zoho
     const merged = new Map<string, ZohoChemical>();
     for (const item of dbItems) merged.set(item.item_key, item);
-    for (const item of zohoItems) merged.set(item.item_key, item); // overwrite with Zoho data
+    for (const item of cachedItems) merged.set(item.item_key, item);
 
     return this.filterItems([...merged.values()], search);
   }
 
-  private async getItemsFromDB(): Promise<ZohoChemical[]> {
+  private async getItemsFromDB(warehouseId?: string): Promise<ZohoChemical[]> {
     const rows = await prisma.systemInventoryCache.findMany({
+      where: warehouseId ? { warehouse_id: warehouseId } : undefined,
       select: { item_key: true, item_name: true, uom_options: true },
       orderBy: { item_name: 'asc' },
     });
@@ -143,14 +151,18 @@ export class DataSyncService {
     );
   }
 
-  async getTotalItemCount(): Promise<number> {
+  async getTotalItemCount(warehouseId?: string): Promise<number> {
+    if (warehouseId) {
+      const whRaw = await redis.get(`${ITEMS_KEY}:${warehouseId}`);
+      if (whRaw) return (JSON.parse(whRaw) as ZohoChemical[]).length;
+    }
     const raw = await redis.get(ITEMS_KEY);
     if (raw) {
       const zohoCount = (JSON.parse(raw) as ZohoChemical[]).length;
       if (zohoCount > 0) return zohoCount;
     }
     return prisma.systemInventoryCache
-      .groupBy({ by: ['item_key'] })
+      .groupBy({ by: ['item_key'], where: warehouseId ? { warehouse_id: warehouseId } : undefined })
       .then((rows) => rows.length)
       .catch(() => 0);
   }
