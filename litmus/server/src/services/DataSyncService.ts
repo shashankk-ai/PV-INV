@@ -19,6 +19,13 @@ export class DataSyncService {
   }
 
   async syncAll(): Promise<void> {
+    if (zohoClient.useMock) {
+      // No real Zoho credentials configured — this app's inventory comes from
+      // manual file uploads (dataUpload.ts). Skip sync entirely so mock
+      // warehouses/items/inventory never get injected into the database.
+      logger.debug('DataSyncService: Zoho not configured, skipping sync (using file-upload data only)');
+      return;
+    }
     logger.info('DataSyncService: starting sync');
     try {
       const [items, warehouses] = await Promise.all([
