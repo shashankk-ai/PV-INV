@@ -48,12 +48,14 @@ const ALIASES: Record<keyof ColumnMap, string[]> = {
     'book stock','book qty','system stock','system qty',
     'on hand qty','onhand','on hand quantity','quantity on hand',
   ],
+  // Total value only — NEVER alias per-unit "avg cost" here, or a file with
+  // only a unit-price column would have that price wrongly stored as the
+  // total system_value, corrupting every downstream calculation.
   inventory_value: [
     'inventory_value','inventory value','extendedcost','extended cost',
     'value','total value','stock value','cost value','item value',
     'valuation','stock valuation','inventory cost','total cost',
     'amount','total amount','net value','gross value',
-    'avg cost','avgcost','average cost','avg_cost','average_cost',
     'total inventory value','inventory amount',
   ],
   sci_lot_no: [
