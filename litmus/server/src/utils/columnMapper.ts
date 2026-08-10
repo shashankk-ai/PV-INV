@@ -85,12 +85,20 @@ export function detectColumns(rawHeaders: string[], sampleRows?: Record<string, 
 
   const used = new Set<string>();
 
-  // First pass: exact / prefix match
+  // First pass: exact match, or prefix match — but ONLY for aliases specific
+  // enough (>=5 normalized chars) that a false positive is unlikely. Short
+  // generic tokens like "qty"/"cas"/"loc" must match exactly; otherwise a
+  // header like "QtyCommitSal" (a repeated per-item field, not a real
+  // per-lot quantity) would wrongly win over the correct "LotQtyonhand"
+  // column simply because it starts with "qty".
   for (const [field, aliases] of Object.entries(ALIASES) as [keyof ColumnMap, string[]][]) {
     for (const raw of rawHeaders) {
       if (used.has(raw)) continue;
       const n = normalize(raw);
-      if (aliases.some((a) => n === normalize(a) || n.startsWith(normalize(a)))) {
+      if (aliases.some((a) => {
+        const na = normalize(a);
+        return n === na || (na.length >= 5 && n.startsWith(na));
+      })) {
         columnMap[field] = raw;
         used.add(raw);
         break;
@@ -98,13 +106,20 @@ export function detectColumns(rawHeaders: string[], sampleRows?: Record<string, 
     }
   }
 
-  // Second pass: substring match for still-unmapped fields
+  // Second pass: substring match for still-unmapped fields. Same guard as
+  // above — a short alias must not match merely by appearing anywhere inside
+  // a longer, unrelated header. (The reverse direction — a short header like
+  // "Qty" being an abbreviation contained in a longer alias like "quantity"
+  // — is intentional and stays unguarded.)
   for (const [field, aliases] of Object.entries(ALIASES) as [keyof ColumnMap, string[]][]) {
     if (columnMap[field]) continue;
     for (const raw of rawHeaders) {
       if (used.has(raw)) continue;
       const n = normalize(raw);
-      if (aliases.some((a) => n.includes(normalize(a)) || normalize(a).includes(n))) {
+      if (aliases.some((a) => {
+        const na = normalize(a);
+        return (na.length >= 5 && n.includes(na)) || na.includes(n);
+      })) {
         columnMap[field] = raw;
         used.add(raw);
         break;
