@@ -224,11 +224,10 @@ router.get(
       const csvRows = [
         q(`LITMUS Master Reconciliation — ${warehouse.name} — ${all ? 'All Dates' : dateStr}`),
         '',
-        'Item Key,Item Name,System QT,System Value,Avg Cost,SCI Lot No.,Vendor Lot No.,PV QT,PV Value,Value Difference,QT Difference,Status',
+        'Item Key,Item Name,System QT,System Value,Avg Cost,PV QT,PV Value,Value Difference,QT Difference,Status',
         ...rows.map((r) => [
           q(r.item_key), q(r.item_name),
           r.system_qty, n(r.system_value), n(r.avg_cost),
-          q(r.sci_lot_no), q(r.vendor_lot_no),
           r.pv_qty, n(r.pv_value), n(r.value_diff),
           r.qty_diff, q(r.status.toUpperCase()),
         ].join(',')),
