@@ -10,6 +10,8 @@ interface ColumnMap {
   warehouse:       string | null;
   quantity:        string | null;
   inventory_value: string | null;
+  sci_lot_no:      string | null;
+  vendor_lot_no:   string | null;
   uom:             string | null;
   cas_number:      string | null;
   uom_options:     string | null;
@@ -46,7 +48,9 @@ const FIELD_LABELS: Record<keyof ColumnMap, string> = {
   location_code:   'Location Code',
   warehouse:       'Warehouse',
   quantity:        'Quantity',
-  inventory_value: 'Inventory Value (₹)',
+  inventory_value: 'Extended Cost (₹)',
+  sci_lot_no:      'SCI Lot No.',
+  vendor_lot_no:   'Vendor Lot No.',
   uom:             'Unit of Measure',
   cas_number:      'CAS Number',
   uom_options:     'UOM Options',

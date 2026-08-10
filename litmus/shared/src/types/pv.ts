@@ -32,6 +32,8 @@ export interface MasterRecoRow {
   system_qty: number;
   system_value: number;
   avg_cost: number;
+  sci_lot_no: string | null;
+  vendor_lot_no: string | null;
   pv_qty: number;
   pv_value: number;
   value_diff: number;

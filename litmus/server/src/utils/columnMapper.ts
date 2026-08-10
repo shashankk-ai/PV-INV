@@ -4,7 +4,9 @@ export interface ColumnMap {
   location_code:   string | null;   // short code, e.g. WH001
   warehouse:       string | null;   // full name, e.g. "Scope Logistics | BHIWANDI"
   quantity:        string | null;
-  inventory_value: string | null;
+  inventory_value: string | null;   // Extended Cost
+  sci_lot_no:      string | null;
+  vendor_lot_no:   string | null;
   uom:             string | null;
   cas_number:      string | null;
   uom_options:     string | null;
@@ -54,6 +56,13 @@ const ALIASES: Record<keyof ColumnMap, string[]> = {
     'avg cost','avgcost','average cost','avg_cost','average_cost',
     'total inventory value','inventory amount',
   ],
+  sci_lot_no: [
+    'sci lot no','sci_lot_no','sci lotno','sci lot number','sci lot',
+  ],
+  vendor_lot_no: [
+    'vendor lot no','vendor_lot_no','vendor lotno','vendor lot number','vendor lot',
+    'supplier lot no','supplier lot',
+  ],
   uom:         ['uom','unit','unit of measure','units','measure','stockuomcode'],
   cas_number:  ['cas','cas_number','cas number','cas no','cas#'],
   uom_options: ['uom_options','uom options','allowed units','units allowed'],
@@ -68,6 +77,7 @@ export function detectColumns(rawHeaders: string[], sampleRows?: Record<string, 
   const columnMap: ColumnMap = {
     item_key: null, item_name: null, location_code: null,
     warehouse: null, quantity: null, inventory_value: null,
+    sci_lot_no: null, vendor_lot_no: null,
     uom: null, cas_number: null, uom_options: null,
   };
 

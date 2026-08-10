@@ -132,6 +132,8 @@ model SystemInventoryCache {
   warehouse_id    String
   quantity        Int
   inventory_value Float    @default(0)
+  sci_lot_no      String?
+  vendor_lot_no   String?
   uom             String
   uom_options     String[]
   synced_at       DateTime @default(now())

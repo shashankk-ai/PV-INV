@@ -589,13 +589,15 @@ export default function TruthReportPage() {
                   </div>
                 ) : (
                   <div className="rounded-xl border border-gray-200 overflow-x-auto">
-                    <table className="w-full text-xs min-w-[620px]">
+                    <table className="w-full text-xs min-w-[820px]">
                       <thead>
                         <tr className="bg-gray-100 text-gray-500 font-semibold text-right">
                           <th className="px-3 py-2.5 text-left font-semibold">Item</th>
                           <th className="px-2 py-2.5 font-semibold">Sys Value</th>
                           <th className="px-2 py-2.5 font-semibold">Sys QT</th>
                           <th className="px-2 py-2.5 font-semibold">Avg Cost</th>
+                          <th className="px-2 py-2.5 font-semibold">SCI Lot No.</th>
+                          <th className="px-2 py-2.5 font-semibold">Vendor Lot No.</th>
                           <th className="px-2 py-2.5 font-semibold">PV QT</th>
                           <th className="px-2 py-2.5 font-semibold">PV Value</th>
                           <th className="px-2 py-2.5 font-semibold">Val Diff</th>
@@ -617,6 +619,8 @@ export default function TruthReportPage() {
                             <td className="px-2 py-2.5 text-right font-mono text-gray-500">
                               {row.avg_cost > 0 ? `₹${row.avg_cost.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'}
                             </td>
+                            <td className="px-2 py-2.5 text-right font-mono text-gray-500">{row.sci_lot_no ?? '—'}</td>
+                            <td className="px-2 py-2.5 text-right font-mono text-gray-500">{row.vendor_lot_no ?? '—'}</td>
                             <td className="px-2 py-2.5 text-right font-mono font-semibold text-navy">{row.pv_qty}</td>
                             <td className="px-2 py-2.5 text-right font-mono font-semibold text-navy">
                               {row.pv_value > 0 ? `₹${row.pv_value.toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : '₹0'}

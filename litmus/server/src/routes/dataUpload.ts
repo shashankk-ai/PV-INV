@@ -39,6 +39,8 @@ interface MappedRecord {
   warehouse_name: string | null;
   quantity: number;
   inventory_value: number;
+  sci_lot_no: string | null;
+  vendor_lot_no: string | null;
   uom: string;
   cas_number?: string;
   uom_options: string[];
@@ -74,12 +76,15 @@ function applyMap(rows: Record<string, unknown>[], map: ColumnMap): MappedRecord
 
       const cas_number = map.cas_number ? String(row[map.cas_number] ?? '').trim() || undefined : undefined;
 
+      const sci_lot_no    = map.sci_lot_no    ? String(row[map.sci_lot_no]    ?? '').trim() || null : null;
+      const vendor_lot_no = map.vendor_lot_no ? String(row[map.vendor_lot_no] ?? '').trim() || null : null;
+
       const rawUomOpts = map.uom_options ? String(row[map.uom_options] ?? '').trim() : '';
       const uom_options = rawUomOpts
         ? rawUomOpts.split(/[,;|]/).map((s) => s.trim()).filter(Boolean)
         : [uom];
 
-      return { item_key, item_name, location_code, warehouse_name, quantity, inventory_value, uom, cas_number, uom_options };
+      return { item_key, item_name, location_code, warehouse_name, quantity, inventory_value, sci_lot_no, vendor_lot_no, uom, cas_number, uom_options };
     })
     .filter((r): r is MappedRecord => r !== null);
 }
@@ -187,7 +192,9 @@ router.post(
       // ── 5. Aggregate inventory rows ────────────────────────────────────────
       const aggregated = new Map<string, {
         item_key: string; item_name: string; warehouse_id: string;
-        quantity: number; inventory_value: number; uom: string; uom_options: string[];
+        quantity: number; inventory_value: number;
+        sci_lot_no: string | null; vendor_lot_no: string | null;
+        uom: string; uom_options: string[];
       }>();
 
       // No-warehouse-column files: scope to the explicitly selected warehouse only.
@@ -207,11 +214,16 @@ router.post(
           if (existing) {
             existing.quantity += rec.quantity;
             existing.inventory_value += rec.inventory_value;
+            // Lot numbers aren't summable — keep the most recent non-empty value seen.
+            if (rec.sci_lot_no) existing.sci_lot_no = rec.sci_lot_no;
+            if (rec.vendor_lot_no) existing.vendor_lot_no = rec.vendor_lot_no;
           } else {
             aggregated.set(key, {
               item_key: rec.item_key, item_name: rec.item_name,
               warehouse_id: targetWh.id, quantity: rec.quantity,
-              inventory_value: rec.inventory_value, uom: rec.uom, uom_options: rec.uom_options,
+              inventory_value: rec.inventory_value,
+              sci_lot_no: rec.sci_lot_no, vendor_lot_no: rec.vendor_lot_no,
+              uom: rec.uom, uom_options: rec.uom_options,
             });
           }
         }

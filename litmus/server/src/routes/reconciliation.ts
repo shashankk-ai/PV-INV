@@ -155,6 +155,7 @@ async function buildMasterReport(warehouseId: string, dateRange?: { gte: Date; l
     rows.push({
       item_key: key, item_name: sys?.item_name ?? key,
       system_qty, system_value, avg_cost: Math.round(avg_cost * 100) / 100,
+      sci_lot_no: sys?.sci_lot_no ?? null, vendor_lot_no: sys?.vendor_lot_no ?? null,
       pv_qty, pv_value,
       value_diff: Math.round((pv_value - system_value) * 100) / 100,
       qty_diff: pv_qty - system_qty,
@@ -223,10 +224,11 @@ router.get(
       const csvRows = [
         q(`LITMUS Master Reconciliation — ${warehouse.name} — ${all ? 'All Dates' : dateStr}`),
         '',
-        'Item Key,Item Name,System QT,System Value,Avg Cost,PV QT,PV Value,Value Difference,QT Difference,Status',
+        'Item Key,Item Name,System QT,System Value,Avg Cost,SCI Lot No.,Vendor Lot No.,PV QT,PV Value,Value Difference,QT Difference,Status',
         ...rows.map((r) => [
           q(r.item_key), q(r.item_name),
           r.system_qty, n(r.system_value), n(r.avg_cost),
+          q(r.sci_lot_no), q(r.vendor_lot_no),
           r.pv_qty, n(r.pv_value), n(r.value_diff),
           r.qty_diff, q(r.status.toUpperCase()),
         ].join(',')),
