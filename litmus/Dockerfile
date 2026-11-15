@@ -45,4 +45,8 @@ COPY --from=builder /app/client/dist ./client/dist
 # Static uploads directory
 RUN mkdir -p /app/uploads
 EXPOSE 3001
-CMD ["node", "server/dist/index.js"]
+# On every start: push the Prisma schema, bootstrap default users (idempotent
+# upsert — safe to re-run), then strip the mock data seed.ts also creates.
+# Mirrors exactly what deploy.sh already does on every EC2 deploy. Each step
+# is non-fatal so a hiccup here never prevents the server itself from starting.
+CMD ["sh", "-c", "cd server && (npx prisma db push --accept-data-loss --skip-generate || true) && (npx tsx prisma/seed.ts || true) && (npx tsx prisma/cleanup-mock-data.ts || true) && cd .. && node server/dist/index.js"]
