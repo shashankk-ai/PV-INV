@@ -28,7 +28,11 @@ ENV NODE_ENV=production
 # Copy only production artifacts
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/shared ./shared
-COPY --from=builder /app/server/dist ./server/dist
+# tsc's rootDir inference (due to the @litmus/shared path-mapped import) nests
+# compiled output as dist/server/src/*.js — copy just that inner folder so the
+# runtime layout (dist/index.js, __dirname two levels below /app) matches what
+# index.ts's relative paths already assume, same as running tsx on src/ directly.
+COPY --from=builder /app/server/dist/server/src ./server/dist
 COPY --from=builder /app/server/prisma ./server/prisma
 COPY --from=builder /app/client/dist ./client/dist
 # Static uploads directory
