@@ -10,6 +10,10 @@ RUN npm ci --ignore-scripts
 # ---------- builder ----------
 FROM node:22-alpine AS builder
 WORKDIR /app
+# Alpine's base image has no `openssl` package installed, so Prisma's engine
+# can't detect the OpenSSL version at generate-time and silently assumes the
+# wrong one (1.1.x instead of the 3.x actually present).
+RUN apk add --no-cache openssl
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY shared ./shared
@@ -25,6 +29,9 @@ RUN npm run build --workspace=client
 FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+# Same reason as the builder stage — needed so Prisma's runtime engine
+# selection correctly detects OpenSSL 3.x instead of defaulting to 1.1.x.
+RUN apk add --no-cache openssl
 # Copy only production artifacts
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/shared ./shared
